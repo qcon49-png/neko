@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v7 - LITE (FIX LAG) =====================
+-- ============ HACKER NEKO v8 - KILL AURA + FPS FIX ================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -54,6 +54,7 @@ local stt={ws=16,hh=10,tph=3,jp=50,fov=70}
 local tg={ghost=false,hover=false,espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
     fps=false,infJump=false,aimE=false,aimA=false,antiVoid=false,antiAFK=false,trail=false}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
+local ka={enabled=false,radius=15,speed=15,ringOn=true,ringTrans=0.65,hue=0}
 local teleportTo
 
 local WPF="HackerNekoWP_"..tostring(game.PlaceId)..".json"
@@ -119,7 +120,6 @@ Instance.new("UICorner",main).CornerRadius=UDim.new(0,4)
 local stk=Instance.new("UIStroke",main) stk.Color=G stk.Thickness=1.5
 local stkGlow=Instance.new("UIStroke",main) stkGlow.Color=G stkGlow.Thickness=5 stkGlow.Transparency=0.85
 
--- Rain (giảm xuống 8 cột cho nhẹ)
 local rainFrame=Instance.new("Frame",main)
 rainFrame.Size=UDim2.new(1,-4,1,-4) rainFrame.Position=UDim2.new(0,2,0,2)
 rainFrame.BackgroundTransparency=1 rainFrame.ClipsDescendants=true rainFrame.ZIndex=1
@@ -275,7 +275,7 @@ txtSave.MouseButton1Click:Connect(function()
 end)
 
 -- TABS
-local tabs={"MOVE","ESP","PLAYER","TELE","EXTRA","INFO"}
+local tabs={"MOVE","ESP","PLAYER","AURA","TELE","EXTRA","INFO"}
 local pages={} local tabBtns={}
 
 local function switchTab(name)
@@ -425,9 +425,9 @@ local function mkBtn(parent,name,cb)
     return b
 end
 
--- FPS BOOST VIP
-local fpsParts={} local fpsEffects={} local fpsMaterials={}
-local fsT=nil local fdC=nil local ldC=nil local fpsScanning=false
+-- ============ FPS BOOST (ĐÃ FIX - KHÔNG ĐỔI MATERIAL) ============
+local fpsParts={} local fpsEffects={}
+local fsT=nil local fpsScanning=false
 
 local function killOne(o)
     if not o or not o.Parent then return end
@@ -438,92 +438,77 @@ local function killOne(o)
         if o.Enabled then table.insert(fpsEffects,{o,"Enabled",true}) o.Enabled=false end
     elseif cls=="PointLight" or cls=="SpotLight" or cls=="SurfaceLight" then
         if o.Enabled then table.insert(fpsEffects,{o,"Enabled",true}) o.Enabled=false end
-    elseif cls=="Decal" or cls=="Texture" then
-        if o.Transparency<1 then table.insert(fpsEffects,{o,"Transparency",o.Transparency}) o.Transparency=1 end
     elseif cls=="DepthOfFieldEffect" or cls=="BloomEffect" or cls=="BlurEffect" or cls=="SunRaysEffect" or cls=="ColorCorrectionEffect" then
         if o.Enabled then table.insert(fpsEffects,{o,"Enabled",true}) o.Enabled=false end
-    elseif cls=="Atmosphere" then
-        pcall(function() if o.Density>0 then table.insert(fpsEffects,{o,"Density",o.Density}) o.Density=0 end end)
-    elseif cls=="Clouds" then
-        pcall(function() if o.Coverage>0 then table.insert(fpsEffects,{o,"Coverage",o.Coverage}) o.Coverage=0 end end)
-    elseif cls=="BasePart" or cls=="MeshPart" or cls=="UnionOperation" or cls=="TrussPart" or cls=="WedgePart" then
+    elseif cls=="BasePart" or cls=="MeshPart" or cls=="UnionOperation" then
         pcall(function() if o.CastShadow then table.insert(fpsParts,o) o.CastShadow=false end end)
-        pcall(function()
-            if o.Material~=Enum.Material.SmoothPlastic then
-                table.insert(fpsMaterials,{o,o.Material})
-                o.Material=Enum.Material.SmoothPlastic
-            end
-        end)
-    elseif cls=="Sound" then
-        pcall(function()
-            if o.Playing and pl.Character and not o:IsDescendantOf(pl.Character) then o.Playing=false end
-        end)
     end
 end
 
 local function fpsScan()
     if fpsScanning then return end
     fpsScanning=true
-    local queue={workspace}
-    while #queue>0 and tg.fps do
-        local cont=table.remove(queue)
-        local ok,children=pcall(function() return cont:GetChildren() end)
-        if ok then
-            for _,ch in ipairs(children) do
-                pcall(killOne,ch)
-                if ch:IsA("Model") or ch:IsA("Folder") or ch:IsA("Tool") then
-                    table.insert(queue,ch)
-                end
-            end
-        end
-        task.wait()
-    end
-    local lq={L}
-    while #lq>0 and tg.fps do
-        local cont=table.remove(lq)
-        local ok,children=pcall(function() return cont:GetChildren() end)
-        if ok then
-            for _,ch in ipairs(children) do
-                pcall(killOne,ch)
-                if ch:IsA("Folder") then table.insert(lq,ch) end
-            end
-        end
-        task.wait()
+    local all=workspace:GetDescendants()
+    for i=1,#all do
+        if not tg.fps then fpsScanning=false return end
+        pcall(killOne,all[i])
+        if i%300==0 then task.wait() end
     end
     fpsScanning=false
 end
 
 local function tFPS(on)
     if fsT then task.cancel(fsT) fsT=nil end
-    if fdC then fdC:Disconnect() fdC=nil end
-    if ldC then ldC:Disconnect() ldC=nil end
     if on then
-        pcall(function() L.Brightness=2 L.ClockTime=14 L.FogEnd=5000 L.FogStart=3000 L.GlobalShadows=false L.EnvironmentDiffuseScale=0 L.EnvironmentSpecularScale=0 L.ShadowSoftness=0 L.OutdoorAmbient=Color3.fromRGB(178,178,178) L.Ambient=Color3.fromRGB(178,178,178) end)
+        pcall(function()
+            L.Brightness=2 L.ClockTime=14
+            L.FogEnd=5000 L.FogStart=3000
+            L.GlobalShadows=false
+            L.EnvironmentDiffuseScale=0
+            L.EnvironmentSpecularScale=0
+            L.ShadowSoftness=0
+            L.OutdoorAmbient=Color3.fromRGB(178,178,178)
+            L.Ambient=Color3.fromRGB(178,178,178)
+        end)
         pcall(function() if setfpscap then setfpscap(120) end end)
-        pcall(function() local s=settings() if s and s.Rendering then s.Rendering.QualityLevel=1 s.Rendering.MeshDetailLevel=1 s.Rendering.SavedQualityLevel=1 s.Rendering.EditQualityLevel=1 end end)
-        pcall(function() local t=workspace:FindFirstChildOfClass("Terrain") if t then t.WaterWaveSize=0 t.WaterReflectance=0 t.WaterTransparency=1 t.Decoration=false end end)
-        task.spawn(fpsScan)
-        fsT=task.spawn(function()
-            while tg.fps do
-                task.wait(10)
-                if not fpsScanning then task.spawn(fpsScan) end
+        pcall(function()
+            local s=settings()
+            if s and s.Rendering then
+                s.Rendering.QualityLevel=1
+                s.Rendering.SavedQualityLevel=1
             end
         end)
-        fdC=workspace.DescendantAdded:Connect(function(o) if tg.fps then task.defer(function() pcall(killOne,o) end) end end)
-        ldC=L.DescendantAdded:Connect(function(o) if tg.fps then task.defer(function() pcall(killOne,o) end) end end)
+        pcall(function()
+            local t=workspace:FindFirstChildOfClass("Terrain")
+            if t then
+                t.WaterWaveSize=0
+                t.WaterReflectance=0
+                t.WaterTransparency=1
+                t.Decoration=false
+            end
+        end)
+        task.spawn(fpsScan)
     else
         pcall(function() if setfpscap then setfpscap(240) end end)
-        for i=#fpsEffects,1,-1 do local e=fpsEffects[i] pcall(function() if e[1] and e[1].Parent then e[1][e[2]]=e[3] end end) end
+        for i=#fpsEffects,1,-1 do
+            local e=fpsEffects[i]
+            pcall(function() if e[1] and e[1].Parent then e[1][e[2]]=e[3] end end)
+        end
         fpsEffects={}
-        for i=1,#fpsParts do local p=fpsParts[i] pcall(function() if p and p.Parent then p.CastShadow=true end end) end
+        for i=1,#fpsParts do
+            local p=fpsParts[i]
+            pcall(function() if p and p.Parent then p.CastShadow=true end end)
+        end
         fpsParts={}
-        for i=1,#fpsMaterials do local m=fpsMaterials[i] pcall(function() if m[1] and m[1].Parent then m[1].Material=m[2] end end) end
-        fpsMaterials={}
-        pcall(function() L.GlobalShadows=true L.EnvironmentDiffuseScale=1 L.EnvironmentSpecularScale=1 end)
+        pcall(function()
+            L.GlobalShadows=true
+            L.EnvironmentDiffuseScale=1
+            L.EnvironmentSpecularScale=1
+        end)
     end
 end
 
--- AUTO ATTACK
+-- ============ ATTACK REMOTES ============
 local attackRemotes={}
 local function scanAttackRemotes()
     attackRemotes={}
@@ -559,12 +544,27 @@ pl.CharacterAdded:Connect(function(c)
 end)
 task.spawn(function() while true do task.wait(5) scanAttackRemotes() end end)
 
+local function fireAttack()
+    local c=pl.Character
+    if not c then return end
+    local tool=c:FindFirstChildOfClass("Tool")
+    if tool then pcall(function() tool:Activate() end) end
+    for _,r in ipairs(attackRemotes) do
+        if r.obj and r.obj.Parent then
+            pcall(function()
+                if r.isFunc then r.obj:InvokeServer() else r.obj:FireServer() end
+            end)
+        end
+    end
+end
+
+-- ============ AUTO ATTACK ============
 local function aaApplySpeed()
     local c=pl.Character if not c then return end
     for _,v in ipairs(c:GetDescendants()) do
         if v:IsA("NumberValue") then
             local n=string.lower(v.Name)
-            if n:find("cooldown") or n:find("cd") or n:find("delay") or n:find("rate") or n:find("reload") or n:find("attack") or n:find("swing") then
+            if n:find("cooldown") or n:find("cd") or n:find("delay") or n:find("rate") or n:find("reload") then
                 pcall(function() v.Value=0 end)
             end
         end
@@ -574,7 +574,7 @@ local function aaApplySpeed()
         for _,v in ipairs(tool:GetDescendants()) do
             if v:IsA("NumberValue") then
                 local n=string.lower(v.Name)
-                if n:find("cooldown") or n:find("cd") or n:find("delay") or n:find("rate") or n:find("reload") then
+                if n:find("cooldown") or n:find("cd") or n:find("delay") or n:find("rate") then
                     pcall(function() v.Value=0 end)
                 end
             end
@@ -600,20 +600,7 @@ RS.Heartbeat:Connect(function(dt)
     local count=math.floor(aaAccum)
     if count<1 then return end
     aaAccum=aaAccum-count
-    local c=pl.Character if not c then return end
-    local tool=c:FindFirstChildOfClass("Tool")
-    if tool then
-        for i=1,count do pcall(function() tool:Activate() end) end
-    end
-    for _,r in ipairs(attackRemotes) do
-        if r.obj and r.obj.Parent then
-            for i=1,count do
-                pcall(function()
-                    if r.isFunc then r.obj:InvokeServer() else r.obj:FireServer() end
-                end)
-            end
-        end
-    end
+    for i=1,count do fireAttack() end
     aaDisableAnims()
     if aa.atkSpd then aaApplySpeed() end
 end)
@@ -634,7 +621,128 @@ RS.Heartbeat:Connect(function()
     teleportFast(predicted+Vector3.new(0,aa.hoverDist,0))
 end)
 
--- GHOST
+-- ============ KILL AURA ============
+local auraRing=nil
+local auraWaves={}
+local auraAccum=0
+
+local function destroyAura()
+    if auraRing and auraRing.Parent then pcall(function() auraRing:Destroy() end) end
+    auraRing=nil
+    for _,w in ipairs(auraWaves) do
+        if w.part and w.part.Parent then pcall(function() w.part:Destroy() end) end
+    end
+    auraWaves={}
+end
+
+local function buildAura()
+    destroyAura()
+    -- Ring chính
+    auraRing=Instance.new("Part")
+    auraRing.Shape=Enum.PartType.Cylinder
+    auraRing.Size=Vector3.new(0.15,ka.radius*2,ka.radius*2)
+    auraRing.Anchored=true
+    auraRing.CanCollide=false
+    auraRing.CanQuery=false
+    auraRing.CanTouch=false
+    auraRing.CastShadow=false
+    auraRing.Material=Enum.Material.Neon
+    auraRing.Color=Color3.fromHSV(ka.hue,0.9,1)
+    auraRing.Transparency=ka.ringTrans
+    auraRing.Name="__NekoAuraRing"
+    auraRing.Parent=workspace
+    
+    -- 3 waves lan tỏa
+    for i=1,3 do
+        local w=Instance.new("Part")
+        w.Shape=Enum.PartType.Cylinder
+        w.Size=Vector3.new(0.1,10,10)
+        w.Anchored=true
+        w.CanCollide=false
+        w.CanQuery=false
+        w.CanTouch=false
+        w.CastShadow=false
+        w.Material=Enum.Material.Neon
+        w.Color=Color3.fromHSV(ka.hue,0.9,1)
+        w.Transparency=0.9
+        w.Name="__NekoAuraWave"
+        w.Parent=workspace
+        table.insert(auraWaves,{part=w,t=(i-1)/3})
+    end
+end
+
+RS.Heartbeat:Connect(function(dt)
+    -- Visual aura
+    if ka.enabled and ka.ringOn then
+        local c=pl.Character
+        local hr=c and c:FindFirstChild("HumanoidRootPart")
+        if hr then
+            if not auraRing or not auraRing.Parent then buildAura() end
+            ka.hue=(ka.hue+dt*0.5)%1
+            local color=Color3.fromHSV(ka.hue,0.9,1)
+            local pos=hr.Position+Vector3.new(0,-2.7,0)
+            local baseCF=CFrame.new(pos)*CFrame.Angles(0,0,math.rad(90))
+            
+            if auraRing then
+                auraRing.Size=Vector3.new(0.15,ka.radius*2,ka.radius*2)
+                auraRing.CFrame=baseCF
+                auraRing.Color=color
+                auraRing.Transparency=ka.ringTrans
+            end
+            for _,w in ipairs(auraWaves) do
+                if w.part then
+                    w.t=(w.t+dt*0.5)%1
+                    local prog=w.t
+                    local sz=ka.radius*2*prog
+                    w.part.Size=Vector3.new(0.1,sz,sz)
+                    w.part.CFrame=baseCF
+                    w.part.Transparency=0.3+prog*0.65
+                    w.part.Color=Color3.fromHSV((ka.hue+prog*0.3)%1,0.9,1)
+                end
+            end
+        else
+            destroyAura()
+        end
+    elseif not ka.enabled or not ka.ringOn then
+        if auraRing or #auraWaves>0 then destroyAura() end
+    end
+    
+    -- Attack
+    if ka.enabled then
+        local c=pl.Character
+        local hr=c and c:FindFirstChild("HumanoidRootPart")
+        if hr then
+            kaAccum=kaAccum+ka.speed*dt
+            local count=math.floor(kaAccum)
+            if count>=1 then
+                kaAccum=kaAccum-count
+                -- Tìm target trong bán kính
+                local targets={}
+                for _,p in ipairs(P:GetPlayers()) do
+                    if p~=pl and p.Character then
+                        local thr=p.Character:FindFirstChild("HumanoidRootPart")
+                        local th=p.Character:FindFirstChildOfClass("Humanoid")
+                        if thr and th and th.Health>0 then
+                            if (thr.Position-hr.Position).Magnitude<=ka.radius then
+                                table.insert(targets,p)
+                            end
+                        end
+                    end
+                end
+                if #targets>0 then
+                    for i=1,count do
+                        aa.target=targets[math.random(1,#targets)]
+                        fireAttack()
+                    end
+                end
+            end
+        else
+            kaAccum=0
+        end
+    end
+end)
+
+-- ============ GHOST ============
 local gv={} local gdc=nil
 local function tGhost(on)
     local ch=pl.Character
@@ -672,7 +780,7 @@ local function tGhost(on)
     end)
 end
 
--- ESP
+-- ============ ESP ============
 local evs={} local trcs={}
 
 local function measureBody(char)
@@ -718,7 +826,6 @@ local function buildESP(char)
         hpFill.Size=UDim2.new(1,0,1,0) hpFill.BackgroundColor3=G hpFill.BorderSizePixel=0
         Instance.new("UICorner",hpFill).CornerRadius=UDim.new(0,4)
 
-        -- Body FX (giảm nhẹ - chỉ 4 scans, 2 sweeps, 5 dots)
         local m=measureBody(char)
         local fxBB=Instance.new("BillboardGui",fold)
         fxBB.Adornee=hr fxBB.Size=UDim2.new(0,60,0,140)
@@ -732,15 +839,6 @@ local function buildESP(char)
             local gr=Instance.new("UIGradient",s)
             gr.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0),NumberSequenceKeypoint.new(1,1)})
             table.insert(scans,{obj=s,speed=0.3+i*0.1,offset=math.random(),dir=(i%2==0) and 1 or -1})
-        end
-        local sweeps={}
-        for i=1,2 do
-            local s=Instance.new("Frame",fxBB)
-            s.Size=UDim2.new(0,i==1 and 2 or 1,1,0) s.BackgroundColor3=i==1 and G or G3
-            s.BackgroundTransparency=i==1 and 0.2 or 0.5 s.BorderSizePixel=0
-            local gr=Instance.new("UIGradient",s) gr.Rotation=90
-            gr.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0),NumberSequenceKeypoint.new(1,1)})
-            table.insert(sweeps,{obj=s,speed=0.3+i*0.15,offset=math.random(),dir=(i%2==0) and 1 or -1})
         end
         local dots={}
         for i=1,5 do
@@ -760,15 +858,9 @@ local function buildESP(char)
         dataTop.BackgroundTransparency=1 dataTop.Text=""
         dataTop.TextColor3=G dataTop.TextStrokeTransparency=.4 dataTop.TextStrokeColor3=Color3.new(0,0,0)
         dataTop.Font=Enum.Font.Code dataTop.TextSize=8 dataTop.TextXAlignment=Enum.TextXAlignment.Center
-        local dataBot=Instance.new("TextLabel",fxBB)
-        dataBot.Size=UDim2.new(1,0,0,10) dataBot.Position=UDim2.new(0,0,1,2)
-        dataBot.BackgroundTransparency=1 dataBot.Text=""
-        dataBot.TextColor3=G dataBot.TextStrokeTransparency=.4 dataBot.TextStrokeColor3=Color3.new(0,0,0)
-        dataBot.Font=Enum.Font.Code dataBot.TextSize=8 dataBot.TextXAlignment=Enum.TextXAlignment.Center
 
         evs[char]={folder=fold,hl=hl,infoBB=infoBB,nameLbl=nameLbl,distLbl=distLbl,hpBB=hpBB,hpFill=hpFill,
-                   fxBB=fxBB,scans=scans,sweeps=sweeps,dots=dots,ring=ring,ringStroke=ringStroke,
-                   dataTop=dataTop,dataBot=dataBot}
+                   fxBB=fxBB,scans=scans,dots=dots,ring=ring,ringStroke=ringStroke,dataTop=dataTop}
     end)
 end
 
@@ -795,7 +887,7 @@ local function rescanESP()
     end
 end
 
--- TELEPORT + PROTECT + TRAIL
+-- ============ TELEPORT + PROTECT + TRAIL ============
 teleportTo = function(targetPos)
     local c=pl.Character if not c then return end
     local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return end
@@ -864,7 +956,7 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- POPULATE UI
+-- ============ POPULATE UI ============
 mkSec(pages["MOVE"],"// SPEED")
 mkSli(pages["MOVE"],"Walk Speed",16,500,16,function(v) stt.ws=v end)
 mkSec(pages["MOVE"],"// JUMP")
@@ -884,7 +976,7 @@ mkTog(pages["ESP"],"ESP BODY FX",false,function(on) tg.espBody=on applyESPToggle
 mkSec(pages["PLAYER"],"// ABILITIES")
 mkTog(pages["PLAYER"],"GHOST",false,function(on) tg.ghost=on tGhost(on) end)
 mkTog(pages["PLAYER"],"FPS BOOST VIP",false,function(on) tg.fps=on tFPS(on) end)
-mkSec(pages["PLAYER"],"// AUTO ATTACK PLAYER")
+mkSec(pages["PLAYER"],"// AUTO ATTACK")
 mkSli(pages["PLAYER"],"Atk Speed",1,200,200,function(v) aa.speed=v end)
 mkSli(pages["PLAYER"],"Hover Dist",0,10,0,function(v) aa.hoverDist=v end)
 local aaTargetBtn=mkBtn(pages["PLAYER"],"TARGET: (none)",function() end)
@@ -924,6 +1016,40 @@ mkBtn(pages["PLAYER"],"REJOIN SERVER",function()
     pcall(function() TS:TeleportToPlaceInstance(game.PlaceId,game.JobId,pl) end)
 end)
 
+-- ============ AURA TAB ============
+mkSec(pages["AURA"],"// KILL AURA")
+mkTog(pages["AURA"],"KILL AURA",false,function(on)
+    ka.enabled=on
+    if on then
+        kaAccum=0
+        if ka.ringOn then task.spawn(function() task.wait(0.1) buildAura() end) end
+    else
+        destroyAura()
+    end
+end)
+mkSli(pages["AURA"],"Aura Radius",5,100,15,function(v)
+    ka.radius=v
+    if ka.enabled and ka.ringOn and auraRing then
+        auraRing.Size=Vector3.new(0.15,ka.radius*2,ka.radius*2)
+    end
+end)
+mkSli(pages["AURA"],"Attack Speed",1,50,15,function(v) ka.speed=v end)
+mkSec(pages["AURA"],"// VISUAL")
+mkTog(pages["AURA"],"SHOW RING",true,function(on)
+    ka.ringOn=on
+    if on and ka.enabled then task.spawn(function() task.wait(0.1) buildAura() end)
+    else destroyAura() end
+end)
+mkSli(pages["AURA"],"Ring Opacity",0,1,0.65,function(v)
+    ka.ringTrans=1-v
+    if auraRing then auraRing.Transparency=ka.ringTrans end
+end)
+mkBtn(pages["AURA"],"CLEAR AURA PARTS",function()
+    destroyAura()
+    stLbl.Text="[ OK ] cleared aura"
+end)
+
+-- ============ TELE ============
 mkSec(pages["TELE"],"// TELEPORT TO PLAYER")
 local tpTargetBtn=mkBtn(pages["TELE"],"SELECT PLAYER",function() end)
 local tpSelected=nil
@@ -1024,7 +1150,7 @@ mkTog(pages["EXTRA"],"ANTI AFK",false,function(on) tg.antiAFK=on end)
 mkSec(pages["EXTRA"],"// EFFECT")
 mkTog(pages["EXTRA"],"TRAIL RAINBOW",false,function(on) tg.trail=on end)
 
--- INFO
+-- ============ INFO ============
 local infoRoot=Instance.new("Frame",pages["INFO"])
 infoRoot.Size=UDim2.new(1,-8,0,0)
 infoRoot.AutomaticSize=Enum.AutomaticSize.Y
@@ -1152,7 +1278,6 @@ infoRefs.date=sysRow("DATE",ORG)
 infoRefs.ver=sysRow("VERSION",ORG)
 infoRefs.active=sysRow("ACTIVE",G)
 
--- FPS + INFO update
 local fpsHist={}
 local stT=tick()
 local pMin=9999 local pMax=0 local pSum=0 local pCnt=0
@@ -1213,11 +1338,12 @@ task.spawn(function()
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
                 infoRefs.date.Text=os.date("%d/%m/%Y")
-                infoRefs.ver.Text="v7.0"
+                infoRefs.ver.Text="v8.0"
                 local a={}
                 if tg.ghost then table.insert(a,"GHOST") end
                 if tg.hover then table.insert(a,"HOVER") end
                 if tg.espLine then table.insert(a,"LINE") end
+                if ka.enabled then table.insert(a,"AURA") end
                 if tg.antiVoid then table.insert(a,"VOID") end
                 if tg.antiAFK then table.insert(a,"AFK") end
                 if tg.trail then table.insert(a,"TRAIL") end
@@ -1308,7 +1434,6 @@ local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
 RS.RenderStepped:Connect(function(dt)
     pcall(function()
         rT=tick()
-        -- Rain (chỉ khi menu mở)
         if menuOpen then
             for _,c in ipairs(rainCols) do
                 c.offset=c.offset+c.speed*dt*2
@@ -1318,7 +1443,6 @@ RS.RenderStepped:Connect(function(dt)
         end
         tglGlow.Transparency=0.7+math.abs(math.sin(rT*2))*0.2
 
-        -- ESP Line
         if tg.espLine and drawingAvailable then
             local ct2=Vector2.new(cam.ViewportSize.X/2,0)
             local rb=Color3.fromHSV(rT%4/4,1,1)
@@ -1345,7 +1469,6 @@ RS.RenderStepped:Connect(function(dt)
             trcs={}
         end
 
-        -- ESP Player
         if tg.espName or tg.espHp or tg.espDist or tg.espBody then
             local myPos=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") and pl.Character.HumanoidRootPart.Position
             for char,data in pairs(evs) do
@@ -1379,10 +1502,6 @@ RS.RenderStepped:Connect(function(dt)
                                 local y=((s.offset+rT*s.speed*s.dir)%1+1)%1
                                 s.obj.Position=UDim2.new(0,0,y,0)
                             end
-                            for _,s in ipairs(data.sweeps) do
-                                local x=((s.offset+rT*s.speed*s.dir)%1+1)%1
-                                s.obj.Position=UDim2.new(x,0,0,0)
-                            end
                             for _,d in ipairs(data.dots) do
                                 d.y=d.y+rT*d.speed*d.dir*0.01
                                 if d.y>1.1 then d.y=-0.1 elseif d.y<-0.1 then d.y=1.1 end
@@ -1402,7 +1521,6 @@ RS.RenderStepped:Connect(function(dt)
             end
         end
 
-        -- Aimlock Player
         if tg.aimE or tg.aimA then
             local c=pl.Character
             if c and c:FindFirstChild("HumanoidRootPart") then
@@ -1507,15 +1625,14 @@ for _,p in ipairs(P:GetPlayers()) do
 end
 applyESPToggles()
 
--- FPS counter status bar (nhẹ)
 task.spawn(function()
     while true do
         task.wait(1)
-        pcall(function() fpsLbl.Text=math.floor(frmCnt*1).." FPS" frmCnt=0 end)
+        pcall(function() fpsLbl.Text=math.floor(frmCnt).." FPS" frmCnt=0 end)
     end
 end)
 
-print("[HACKER NEKO v7 LITE] loaded")
+print("[HACKER NEKO v8] loaded - KILL AURA + FPS FIX")
 
 end)
 
