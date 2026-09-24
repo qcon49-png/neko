@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v6 - NO-LAG + BIRD AIM + VIP FPS ========
+-- ============ HACKER NEKO v7 - LITE (FIX LAG) =====================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -50,13 +50,10 @@ sg.Parent=gp
 local ef=Instance.new("Folder",gp) ef.Name="NekoESP"
 local epf=Instance.new("Folder",ef) epf.Name="Players"
 
-local stt={ws=16,hh=10,tph=3,jp=50,fov=70,itemRadius=150,itemMaxSize=4}
+local stt={ws=16,hh=10,tph=3,jp=50,fov=70}
 local tg={ghost=false,hover=false,espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
-    itemLine=false,fps=false,infJump=false,aimE=false,aimA=false,npcAim=false,
-    antiVoid=false,antiAFK=false,trail=false}
+    fps=false,infJump=false,aimE=false,aimA=false,antiVoid=false,antiAFK=false,trail=false}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
-local npcTarget=nil
-local npcMode="bird"  -- bird / npc / all
 local teleportTo
 
 local WPF="HackerNekoWP_"..tostring(game.PlaceId)..".json"
@@ -93,7 +90,7 @@ if hfa and isfile(WPF) then
 end
 local function svW() if not hfa then return end pcall(function() writefile(WPF,HS:JSONEncode(wd)) end) end
 
--- TOGGLE
+-- TOGGLE BUTTON
 local toggleBtn=Instance.new("Frame",sg)
 toggleBtn.Size=UDim2.new(0,48,0,48) toggleBtn.Position=UDim2.new(0,30,0,120)
 toggleBtn.BackgroundColor3=BG toggleBtn.BackgroundTransparency=0.15
@@ -122,19 +119,20 @@ Instance.new("UICorner",main).CornerRadius=UDim.new(0,4)
 local stk=Instance.new("UIStroke",main) stk.Color=G stk.Thickness=1.5
 local stkGlow=Instance.new("UIStroke",main) stkGlow.Color=G stkGlow.Thickness=5 stkGlow.Transparency=0.85
 
+-- Rain (giảm xuống 8 cột cho nhẹ)
 local rainFrame=Instance.new("Frame",main)
 rainFrame.Size=UDim2.new(1,-4,1,-4) rainFrame.Position=UDim2.new(0,2,0,2)
 rainFrame.BackgroundTransparency=1 rainFrame.ClipsDescendants=true rainFrame.ZIndex=1
 local rainCols={}
-for i=1,17 do
+for i=1,8 do
     local lbl=Instance.new("TextLabel",rainFrame)
-    lbl.Size=UDim2.new(0,12,0,500) lbl.Position=UDim2.new(0,(i-1)*24,0,0)
+    lbl.Size=UDim2.new(0,12,0,300) lbl.Position=UDim2.new(0,(i-1)*50,0,0)
     lbl.BackgroundTransparency=1 lbl.Text="" lbl.Font=Enum.Font.Code lbl.TextSize=11
-    lbl.TextColor3=G2 lbl.TextTransparency=0.9 lbl.TextYAlignment=Enum.TextYAlignment.Top lbl.ZIndex=1
+    lbl.TextColor3=G2 lbl.TextTransparency=0.92 lbl.TextYAlignment=Enum.TextYAlignment.Top lbl.ZIndex=1
     local s=""
-    for j=1,100 do s=s..(math.random()>0.5 and "1" or "0").."\n" end
+    for j=1,60 do s=s..(math.random()>0.5 and "1" or "0").."\n" end
     lbl.Text=s
-    table.insert(rainCols,{lbl=lbl,offset=math.random()*500,speed=20+math.random()*60})
+    table.insert(rainCols,{lbl=lbl,offset=math.random()*300,speed=20+math.random()*60})
 end
 
 local hd=Instance.new("Frame",main)
@@ -180,7 +178,7 @@ Instance.new("UICorner",stBar).CornerRadius=UDim.new(0,4)
 
 local stLbl=Instance.new("TextLabel",stBar)
 stLbl.Size=UDim2.new(1,-100,1,0) stLbl.Position=UDim2.new(0,8,0,0)
-stLbl.BackgroundTransparency=1 stLbl.Text="[ OK ] connected"
+stLbl.BackgroundTransparency=1 stLbl.Text="[ OK ] ready"
 stLbl.Font=Enum.Font.Code stLbl.TextSize=9 stLbl.TextColor3=G
 stLbl.TextXAlignment=Enum.TextXAlignment.Left stLbl.ZIndex=111
 
@@ -222,7 +220,7 @@ local function dlgBtn(text,color,cb)
 end
 local function closeDlg()
     dlg.Visible=false dlgOverlay.Visible=false
-    for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") or ch:IsA("Frame") then ch:Destroy() end end
+    for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
 end
 dlgOverlay.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then closeDlg() end
@@ -427,102 +425,8 @@ local function mkBtn(parent,name,cb)
     return b
 end
 
--- ============ ITEM SCAN (có throttle, không lag) ============
-local function findPrompt(o)
-    if o:IsA("Model") then return o:FindFirstChildWhichIsA("ProximityPrompt",true)
-    elseif o:IsA("BasePart") then return o:FindFirstChildWhichIsA("ProximityPrompt") end
-    return nil
-end
-local function findCD(o)
-    if o:IsA("Model") then return o:FindFirstChildWhichIsA("ClickDetector",true)
-    elseif o:IsA("BasePart") then return o:FindFirstChildWhichIsA("ClickDetector") end
-    return nil
-end
-local function getPos(o)
-    if o:IsA("Model") then
-        local prim=o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart")
-        return prim and prim.Position
-    elseif o:IsA("BasePart") then return o.Position end
-end
-local function getSize(o)
-    if o:IsA("Model") then
-        local _,sz=o:GetBoundingBox()
-        return sz.Magnitude
-    elseif o:IsA("BasePart") then
-        return o.Size.Magnitude
-    end
-    return 999
-end
-local function isPlayerChar(m) for _,p in ipairs(P:GetPlayers()) do if p.Character==m then return true end end return false end
-
-local itemCache={}
-local function scanItems()
-    local newCache={}
-    local myPos=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") and pl.Character.HumanoidRootPart.Position
-    if not myPos then itemCache=newCache return end
-    local myChar=pl.Character
-    -- Chỉ quét trong workspace con trực tiếp (không GetDescendants) để nhanh
-    for _,o in ipairs(workspace:GetChildren()) do
-        if (o:IsA("Model") or o:IsA("BasePart")) and o~=myChar then
-            local skip=false
-            if o:IsA("Model") and (o:FindFirstChildOfClass("Humanoid") or isPlayerChar(o)) then skip=true end
-            if not skip and myChar and o:IsDescendantOf(myChar) then skip=true end
-            if not skip then
-                local pos=getPos(o)
-                if pos then
-                    local d=(pos-myPos).Magnitude
-                    if d<=stt.itemRadius then
-                        local sz=getSize(o)
-                        if sz<=stt.itemMaxSize then
-                            local prompt=findPrompt(o)
-                            local cd=findCD(o)
-                            if prompt or cd then
-                                table.insert(newCache,{obj=o,pos=pos,dist=d,prompt=prompt,cd=cd})
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    itemCache=newCache
-end
-
--- ============ NPC SCAN (phân loại bird vs npc) ============
-local function scanNPCs(mode)
-    mode=mode or npcMode
-    local list={}
-    local myPos=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") and pl.Character.HumanoidRootPart.Position
-    for _,o in ipairs(workspace:GetChildren()) do
-        if o:IsA("Model") and not isPlayerChar(o) then
-            local hasHum=o:FindFirstChildOfClass("Humanoid")~=nil
-            local prim=o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart")
-            if prim then
-                local _,sz=o:GetBoundingBox()
-                local szM=sz.Magnitude
-                local isBird=not hasHum and szM<15
-                local isNPC=hasHum
-                local include=false
-                if mode=="bird" and isBird then include=true end
-                if mode=="npc" and isNPC then include=true end
-                if mode=="all" and (isBird or isNPC) then include=true end
-                if include then
-                    local d=myPos and (prim.Position-myPos).Magnitude or 0
-                    table.insert(list,{
-                        obj=o,pos=prim.Position,dist=d,size=szM,
-                        class=o.ClassName,hasHum=hasHum,
-                        kind=isBird and "BIRD" or "NPC"
-                    })
-                end
-            end
-        end
-    end
-    table.sort(list,function(a,b) return a.dist<b.dist end)
-    return list
-end
-
--- ============ FPS BOOST VIP ============
-local fpsParts={} local fpsEffects={} local fpsMaterials={} local fpsSounds={}
+-- FPS BOOST VIP
+local fpsParts={} local fpsEffects={} local fpsMaterials={}
 local fsT=nil local fdC=nil local ldC=nil local fpsScanning=false
 
 local function killOne(o)
@@ -552,16 +456,7 @@ local function killOne(o)
         end)
     elseif cls=="Sound" then
         pcall(function()
-            if o.Playing and not o:IsDescendantOf(pl.Character) then
-                table.insert(fpsSounds,o)
-                o.Playing=false
-            end
-        end)
-    elseif cls=="Explosion" then
-        pcall(function()
-            o.BlastPressure=0
-            o.BlastRadius=0
-            o.DestroyJointRadiusPercent=0
+            if o.Playing and pl.Character and not o:IsDescendantOf(pl.Character) then o.Playing=false end
         end)
     end
 end
@@ -569,7 +464,6 @@ end
 local function fpsScan()
     if fpsScanning then return end
     fpsScanning=true
-    -- Dùng GetChildren đệ quy thủ công với yield
     local queue={workspace}
     while #queue>0 and tg.fps do
         local cont=table.remove(queue)
@@ -625,7 +519,6 @@ local function tFPS(on)
         fpsParts={}
         for i=1,#fpsMaterials do local m=fpsMaterials[i] pcall(function() if m[1] and m[1].Parent then m[1].Material=m[2] end end) end
         fpsMaterials={}
-        fpsSounds={}
         pcall(function() L.GlobalShadows=true L.EnvironmentDiffuseScale=1 L.EnvironmentSpecularScale=1 end)
     end
 end
@@ -780,7 +673,7 @@ local function tGhost(on)
 end
 
 -- ESP
-local evs={} local trcs={} local itemLines={}
+local evs={} local trcs={}
 
 local function measureBody(char)
     local hrp=char:FindFirstChild("HumanoidRootPart")
@@ -824,31 +717,33 @@ local function buildESP(char)
         hpFill.AnchorPoint=Vector2.new(0,1) hpFill.Position=UDim2.new(0,0,1,0)
         hpFill.Size=UDim2.new(1,0,1,0) hpFill.BackgroundColor3=G hpFill.BorderSizePixel=0
         Instance.new("UICorner",hpFill).CornerRadius=UDim.new(0,4)
+
+        -- Body FX (giảm nhẹ - chỉ 4 scans, 2 sweeps, 5 dots)
         local m=measureBody(char)
         local fxBB=Instance.new("BillboardGui",fold)
         fxBB.Adornee=hr fxBB.Size=UDim2.new(0,60,0,140)
         if m then fxBB.StudsOffset=Vector3.new(0,m.center,0) else fxBB.StudsOffset=Vector3.new(0,0.3,0) end
         fxBB.AlwaysOnTop=true fxBB.LightInfluence=0 fxBB.MaxDistance=800 fxBB.ClipsDescendants=true
         local scans={}
-        for i=1,6 do
+        for i=1,4 do
             local s=Instance.new("Frame",fxBB)
             s.Size=UDim2.new(1,0,0,i<=2 and 2 or 1) s.BackgroundColor3=i%2==0 and G3 or G
             s.BackgroundTransparency=i<=2 and 0 or 0.4 s.BorderSizePixel=0
             local gr=Instance.new("UIGradient",s)
             gr.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0),NumberSequenceKeypoint.new(1,1)})
-            table.insert(scans,{obj=s,speed=0.3+i*0.08,offset=math.random(),dir=(i%2==0) and 1 or -1})
+            table.insert(scans,{obj=s,speed=0.3+i*0.1,offset=math.random(),dir=(i%2==0) and 1 or -1})
         end
         local sweeps={}
-        for i=1,3 do
+        for i=1,2 do
             local s=Instance.new("Frame",fxBB)
             s.Size=UDim2.new(0,i==1 and 2 or 1,1,0) s.BackgroundColor3=i==1 and G or G3
             s.BackgroundTransparency=i==1 and 0.2 or 0.5 s.BorderSizePixel=0
             local gr=Instance.new("UIGradient",s) gr.Rotation=90
             gr.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0),NumberSequenceKeypoint.new(1,1)})
-            table.insert(sweeps,{obj=s,speed=0.25+i*0.1,offset=math.random(),dir=(i%2==0) and 1 or -1})
+            table.insert(sweeps,{obj=s,speed=0.3+i*0.15,offset=math.random(),dir=(i%2==0) and 1 or -1})
         end
         local dots={}
-        for i=1,10 do
+        for i=1,5 do
             local d=Instance.new("Frame",fxBB)
             local sz=math.random(2,3)
             d.Size=UDim2.new(0,sz,0,sz) d.BackgroundColor3=G3 d.BackgroundTransparency=0.3 d.BorderSizePixel=0
@@ -860,30 +755,6 @@ local function buildESP(char)
         ring.Size=UDim2.new(0,20,0,20) ring.BackgroundTransparency=1 ring.BorderSizePixel=0
         local ringStroke=Instance.new("UIStroke",ring) ringStroke.Color=G3 ringStroke.Thickness=1.5 ringStroke.Transparency=.3
         Instance.new("UICorner",ring).CornerRadius=UDim.new(1,0)
-        local ticks={}
-        for i=1,10 do
-            local t2=Instance.new("Frame",fxBB)
-            t2.Size=UDim2.new(0,3,0,1) t2.BackgroundColor3=G
-            t2.BackgroundTransparency=0.3 t2.BorderSizePixel=0 t2.Visible=false
-            table.insert(ticks,t2)
-        end
-        local glitches={}
-        for i=1,3 do
-            local g=Instance.new("Frame",fxBB)
-            g.Size=UDim2.new(1,0,0,2) g.BackgroundColor3=Color3.new(1,1,1)
-            g.BackgroundTransparency=.5 g.BorderSizePixel=0 g.Visible=false
-            table.insert(glitches,g)
-        end
-        local dataL=Instance.new("TextLabel",fxBB)
-        dataL.Size=UDim2.new(0,18,1,0) dataL.Position=UDim2.new(0,-20,0,0)
-        dataL.BackgroundTransparency=1 dataL.Text=""
-        dataL.TextColor3=G dataL.TextStrokeTransparency=.3 dataL.TextStrokeColor3=Color3.new(0,0,0)
-        dataL.Font=Enum.Font.Code dataL.TextSize=8 dataL.TextXAlignment=Enum.TextXAlignment.Right dataL.TextYAlignment=Enum.TextYAlignment.Top
-        local dataR=Instance.new("TextLabel",fxBB)
-        dataR.Size=UDim2.new(0,18,1,0) dataR.Position=UDim2.new(1,2,0,0)
-        dataR.BackgroundTransparency=1 dataR.Text=""
-        dataR.TextColor3=G dataR.TextStrokeTransparency=.3 dataR.TextStrokeColor3=Color3.new(0,0,0)
-        dataR.Font=Enum.Font.Code dataR.TextSize=8 dataR.TextXAlignment=Enum.TextXAlignment.Left dataR.TextYAlignment=Enum.TextYAlignment.Top
         local dataTop=Instance.new("TextLabel",fxBB)
         dataTop.Size=UDim2.new(1,0,0,10) dataTop.Position=UDim2.new(0,0,0,-12)
         dataTop.BackgroundTransparency=1 dataTop.Text=""
@@ -897,8 +768,7 @@ local function buildESP(char)
 
         evs[char]={folder=fold,hl=hl,infoBB=infoBB,nameLbl=nameLbl,distLbl=distLbl,hpBB=hpBB,hpFill=hpFill,
                    fxBB=fxBB,scans=scans,sweeps=sweeps,dots=dots,ring=ring,ringStroke=ringStroke,
-                   ticks=ticks,glitches=glitches,dataL=dataL,dataR=dataR,dataTop=dataTop,dataBot=dataBot,
-                   nextGlitch=0,nextTick=0}
+                   dataTop=dataTop,dataBot=dataBot}
     end)
 end
 
@@ -1004,19 +874,12 @@ mkSec(pages["MOVE"],"// HOVER")
 mkSli(pages["MOVE"],"Hover Height",2,20,10,function(v) stt.hh=v end)
 mkTog(pages["MOVE"],"CHAN MA (hover)",false,function(on) tg.hover=on end)
 
-mkSec(pages["ESP"],"// WALLHACK PLAYER")
+mkSec(pages["ESP"],"// WALLHACK")
 mkTog(pages["ESP"],"ESP LINE (RAINBOW)",false,function(on) tg.espLine=on end)
 mkTog(pages["ESP"],"ESP NAME",false,function(on) tg.espName=on applyESPToggles() end)
 mkTog(pages["ESP"],"ESP HEALTH",false,function(on) tg.espHp=on applyESPToggles() end)
 mkTog(pages["ESP"],"ESP DISTANCE",false,function(on) tg.espDist=on applyESPToggles() end)
 mkTog(pages["ESP"],"ESP BODY FX",false,function(on) tg.espBody=on applyESPToggles() end)
-mkSec(pages["ESP"],"// ITEM LOCATOR")
-mkTog(pages["ESP"],"ITEM LINE (YELLOW)",false,function(on)
-    tg.itemLine=on
-    if on then task.spawn(scanItems) else itemCache={} end
-end)
-mkSli(pages["ESP"],"Item Radius",20,1000,150,function(v) stt.itemRadius=v end)
-mkSli(pages["ESP"],"Max Item Size",1,20,4,function(v) stt.itemMaxSize=v end)
 
 mkSec(pages["PLAYER"],"// ABILITIES")
 mkTog(pages["PLAYER"],"GHOST",false,function(on) tg.ghost=on tGhost(on) end)
@@ -1027,7 +890,7 @@ mkSli(pages["PLAYER"],"Hover Dist",0,10,0,function(v) aa.hoverDist=v end)
 local aaTargetBtn=mkBtn(pages["PLAYER"],"TARGET: (none)",function() end)
 local function openTargetPicker()
     dlgTitle.Text="> SELECT TARGET PLAYER"
-    for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") or ch:IsA("Frame") then ch:Destroy() end end
+    for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
     for _,p in ipairs(P:GetPlayers()) do
         if p~=pl then
             dlgBtn(p.Name, G, function()
@@ -1048,153 +911,7 @@ mkTog(pages["PLAYER"],"AUTO ATTACK",false,function(on)
     end
     aa.enabled=on aa.atkSpd=on aa.hoverOn=on
 end)
-
-mkSec(pages["PLAYER"],"// NPC/BIRD AIMLOCK")
--- Mode toggle
-local modeRow=Instance.new("Frame",pages["PLAYER"])
-modeRow.Size=UDim2.new(1,-8,0,22)
-modeRow.BackgroundColor3=BG
-modeRow.BackgroundTransparency=0.4
-modeRow.BorderSizePixel=0
-modeRow.LayoutOrder=#pages["PLAYER"]:GetChildren()*10
-modeRow.ZIndex=112
-Instance.new("UICorner",modeRow).CornerRadius=UDim.new(0,3)
-local modeLbl=Instance.new("TextLabel",modeRow)
-modeLbl.Size=UDim2.new(0.4,0,1,0)
-modeLbl.Position=UDim2.new(0,12,0,0)
-modeLbl.BackgroundTransparency=1
-modeLbl.Text="Scan Mode"
-modeLbl.Font=Enum.Font.Code
-modeLbl.TextSize=9
-modeLbl.TextColor3=TX
-modeLbl.TextXAlignment=Enum.TextXAlignment.Left
-modeLbl.ZIndex=113
-local modeBtn=Instance.new("TextButton",modeRow)
-modeBtn.Size=UDim2.new(0,64,0,16)
-modeBtn.Position=UDim2.new(1,-70,.5,-8)
-modeBtn.BackgroundColor3=ORG
-modeBtn.BorderSizePixel=0
-modeBtn.Text="BIRD"
-modeBtn.Font=Enum.Font.Code
-modeBtn.TextSize=9
-modeBtn.TextColor3=Color3.new(0,0,0)
-modeBtn.AutoButtonColor=false
-modeBtn.ZIndex=113
-Instance.new("UICorner",modeBtn).CornerRadius=UDim.new(0,3)
-modeBtn.MouseButton1Click:Connect(function()
-    if npcMode=="bird" then npcMode="npc" modeBtn.Text="NPC"
-    elseif npcMode=="npc" then npcMode="all" modeBtn.Text="ALL"
-    else npcMode="bird" modeBtn.Text="BIRD" end
-end)
-
-local npcTargetBtn=mkBtn(pages["PLAYER"],"NPC: (none)",function() end)
-local function makeNpcIcon(npc)
-    local frame=Instance.new("Frame")
-    frame.Size=UDim2.new(0,36,0,36)
-    frame.BackgroundColor3=Color3.fromRGB(0,15,10)
-    frame.BorderSizePixel=0
-    Instance.new("UICorner",frame).CornerRadius=UDim.new(0,3)
-    local vp=Instance.new("ViewportFrame",frame)
-    vp.Size=UDim2.new(1,-4,1,-4)
-    vp.Position=UDim2.new(0,2,0,2)
-    vp.BackgroundTransparency=1
-    vp.BorderSizePixel=0
-    vp.ZIndex=1
-    vp.Ambient=Color3.fromRGB(200,200,200)
-    vp.LightColor=Color3.fromRGB(255,255,255)
-    vp.LightDirection=Vector3.new(-1,-1,-1)
-    local c=Instance.new("Camera")
-    c.FieldOfView=55
-    vp.CurrentCamera=c
-    local prim=npc.PrimaryPart or npc:FindFirstChildWhichIsA("BasePart")
-    if prim then
-        pcall(function()
-            local clone=prim:Clone()
-            clone.Anchored=true
-            clone.CanCollide=false
-            clone.CanQuery=false
-            clone.CanTouch=false
-            clone.Massless=true
-            local _,sz=npc:GetBoundingBox()
-            local szM=sz.Magnitude
-            clone.Size=Vector3.new(1,1,1)*math.max(szM*0.4,0.5)
-            clone.CFrame=CFrame.new(0,0,0)
-            clone.Parent=vp
-            local dist=math.max(szM*2.5,4)
-            c.CFrame=CFrame.new(Vector3.new(0,dist*0.3,-dist),Vector3.new(0,0,0))
-        end)
-    end
-    return frame
-end
-local function openNpcPicker()
-    dlgTitle.Text="> SCANNING..."
-    for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") or ch:IsA("Frame") then ch:Destroy() end end
-    dlg.Visible=true dlgOverlay.Visible=true
-    task.spawn(function()
-        local list=scanNPCs()
-        dlgTitle.Text=string.format("> %s LIST (%d)",string.upper(npcMode),#list)
-        for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") or ch:IsA("Frame") then ch:Destroy() end end
-        if #list==0 then
-            dlgBtn("KHONG TIM THAY",RED,function() closeDlg() end)
-        else
-            for i,entry in ipairs(list) do
-                if i>30 then break end
-                local row=Instance.new("TextButton",dlgBody)
-                row.Size=UDim2.new(1,-4,0,42)
-                row.BackgroundColor3=BG2
-                row.BackgroundTransparency=0.3
-                row.BorderSizePixel=0
-                row.Text=""
-                row.AutoButtonColor=false
-                row.LayoutOrder=i
-                row.ZIndex=903
-                Instance.new("UICorner",row).CornerRadius=UDim.new(0,3)
-                local rs=Instance.new("UIStroke",row)
-                rs.Color=entry.kind=="BIRD" and YEL or ORG
-                rs.Thickness=1
-                local icon=makeNpcIcon(entry.obj)
-                icon.Position=UDim2.new(0,4,.5,-18)
-                icon.ZIndex=904
-                icon.Parent=row
-                local nameLbl=Instance.new("TextLabel",row)
-                nameLbl.Size=UDim2.new(1,-60,0,18)
-                nameLbl.Position=UDim2.new(0,46,0,4)
-                nameLbl.BackgroundTransparency=1
-                nameLbl.Text="["..entry.kind.."] "..string.sub(entry.obj.Name,1,20)
-                nameLbl.Font=Enum.Font.Code
-                nameLbl.TextSize=11
-                nameLbl.TextColor3=entry.kind=="BIRD" and YEL or ORG
-                nameLbl.TextXAlignment=Enum.TextXAlignment.Left
-                nameLbl.ZIndex=904
-                local infoLbl=Instance.new("TextLabel",row)
-                infoLbl.Size=UDim2.new(1,-60,0,14)
-                infoLbl.Position=UDim2.new(0,46,0,22)
-                infoLbl.BackgroundTransparency=1
-                infoLbl.Text=string.format("%s | %dm | %.1fs",entry.class,math.floor(entry.dist),entry.size)
-                infoLbl.Font=Enum.Font.Code
-                infoLbl.TextSize=9
-                infoLbl.TextColor3=DIM
-                infoLbl.TextXAlignment=Enum.TextXAlignment.Left
-                infoLbl.ZIndex=904
-                row.MouseButton1Click:Connect(function()
-                    npcTarget=entry.obj
-                    npcTargetBtn.Text="  > "..entry.kind..": "..string.sub(entry.obj.Name,1,12)
-                    stLbl.Text="[ OK ] target: "..entry.obj.Name
-                    closeDlg()
-                end)
-            end
-        end
-        dlgBtn("CANCEL",RED,function() closeDlg() end)
-    end)
-end
-npcTargetBtn.MouseButton1Click:Connect(function() openNpcPicker() end)
-mkTog(pages["PLAYER"],"NPC AIMLOCK",false,function(on) tg.npcAim=on end)
-mkBtn(pages["PLAYER"],"CLEAR NPC TARGET",function()
-    npcTarget=nil
-    npcTargetBtn.Text="  > NPC: (none)"
-end)
-
-mkSec(pages["PLAYER"],"// AIMLOCK PLAYER")
+mkSec(pages["PLAYER"],"// AIMLOCK")
 mkTog(pages["PLAYER"],"AIM ENEMY",false,function(on) tg.aimE=on end)
 mkTog(pages["PLAYER"],"AIM ALL",false,function(on) tg.aimA=on end)
 mkSec(pages["PLAYER"],"// CAMERA")
@@ -1212,7 +929,7 @@ local tpTargetBtn=mkBtn(pages["TELE"],"SELECT PLAYER",function() end)
 local tpSelected=nil
 local function openTpPicker()
     dlgTitle.Text="> SELECT PLAYER"
-    for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") or ch:IsA("Frame") then ch:Destroy() end end
+    for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
     for _,p in ipairs(P:GetPlayers()) do
         if p~=pl then
             dlgBtn(p.Name,G,function()
@@ -1258,15 +975,14 @@ for si=1,3 do
     local slotBtn=mkBtn(pages["TELE"],"[ "..wd.slots[sIdx].name.." ]",function() end)
     slotBtn.MouseButton1Click:Connect(function()
         dlgTitle.Text="> SLOT: "..wd.slots[sIdx].name
-        for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") or ch:IsA("Frame") then ch:Destroy() end end
+        for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
         for pi2=1,2 do
             local pt2=wd.slots[sIdx].pts[pi2]
             local statusStr=pt2.cf and "[SAVED]" or "[EMPTY]"
             dlgBtn(pt2.name.."  "..statusStr,G,function()
-                closeDlg()
-                task.wait(0.05)
+                closeDlg() task.wait(0.05)
                 dlgTitle.Text="> "..pt2.name
-                for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") or ch:IsA("Frame") then ch:Destroy() end end
+                for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
                 dlgBtn("SET POSITION",G,function()
                     local c=pl.Character
                     local hr=c and c:FindFirstChild("HumanoidRootPart")
@@ -1308,7 +1024,7 @@ mkTog(pages["EXTRA"],"ANTI AFK",false,function(on) tg.antiAFK=on end)
 mkSec(pages["EXTRA"],"// EFFECT")
 mkTog(pages["EXTRA"],"TRAIL RAINBOW",false,function(on) tg.trail=on end)
 
--- ============ INFO TAB (CARD GRID ĐẸP) ============
+-- INFO
 local infoRoot=Instance.new("Frame",pages["INFO"])
 infoRoot.Size=UDim2.new(1,-8,0,0)
 infoRoot.AutomaticSize=Enum.AutomaticSize.Y
@@ -1416,12 +1132,10 @@ infoRefs.fps=perfRow("FPS",CY)
 infoRefs.fpsAvg=perfRow("FPS AVG",CY)
 infoRefs.mem=perfRow("MEMORY",CY)
 infoRefs.uptime=perfRow("UPTIME",CY)
-infoRefs.ent=perfRow("ENTITIES",CY)
 
 local pRow=makeCard("PLAYER",YEL)
 infoRefs.name=pRow("NAME",YEL)
 infoRefs.disp=pRow("DISPLAY",YEL)
-infoRefs.uid=pRow("USER ID",YEL)
 infoRefs.hp=pRow("HEALTH",G)
 infoRefs.pos=pRow("POSITION",YEL)
 infoRefs.spd=pRow("SPEED",YEL)
@@ -1436,17 +1150,15 @@ local sysRow=makeCard("SYSTEM",ORG)
 infoRefs.time=sysRow("TIME",ORG)
 infoRefs.date=sysRow("DATE",ORG)
 infoRefs.ver=sysRow("VERSION",ORG)
-infoRefs.storage=sysRow("STORAGE",ORG)
 infoRefs.active=sysRow("ACTIVE",G)
 
--- FPS counter for INFO
+-- FPS + INFO update
 local fpsHist={}
 local stT=tick()
 local pMin=9999 local pMax=0 local pSum=0 local pCnt=0
 local frmCnt=0
 RS.RenderStepped:Connect(function() frmCnt=frmCnt+1 end)
 
--- Update loop (chỉ chạy khi INFO hiển thị)
 task.spawn(function()
     while true do
         if pages["INFO"] and pages["INFO"].Visible then
@@ -1456,7 +1168,6 @@ task.spawn(function()
             local sum=0
             for _,v in ipairs(fpsHist) do sum=sum+v end
             local avg=#fpsHist>0 and math.floor(sum/#fpsHist) or 0
-
             local ping=0
             pcall(function() ping=math.floor(pl:GetNetworkPing()*1000) end)
             if ping>0 then
@@ -1468,7 +1179,6 @@ task.spawn(function()
             local stTxt,stCol="GOOD",G
             if ping>150 then stTxt,stCol="BAD",YEL end
             if ping>250 then stTxt,stCol="POOR",RED end
-
             pcall(function()
                 infoRefs.ping.Text=ping.." ms"
                 infoRefs.pMin.Text=(pMin==9999 and "--" or pMin.." ms")
@@ -1481,13 +1191,10 @@ task.spawn(function()
                 infoRefs.mem.Text=(function() local ok,m=pcall(function() return ST:GetTotalMemoryUsageMb() end) return ok and m and math.floor(m).." MB" or "--" end)()
                 local u=math.floor(tick()-stT)
                 infoRefs.uptime.Text=string.format("%dm %ds",math.floor(u/60),u%60)
-                infoRefs.ent.Text=#workspace:GetChildren().." obj"
             end)
-
             pcall(function()
                 infoRefs.name.Text=pl.Name
                 infoRefs.disp.Text=pl.DisplayName
-                infoRefs.uid.Text=tostring(pl.UserId)
                 local c=pl.Character
                 if c then
                     local h=c:FindFirstChildOfClass("Humanoid")
@@ -1500,27 +1207,17 @@ task.spawn(function()
                         infoRefs.spd.Text=math.floor(math.sqrt(v.X^2+v.Z^2)).." st/s"
                     end
                 end
-            end)
-
-            pcall(function()
                 infoRefs.game.Text=string.sub(game.Name or "?",1,24)
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.job.Text=string.sub(game.JobId or "?",1,14).."..."
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
-            end)
-
-            pcall(function()
                 infoRefs.time.Text=os.date("%H:%M:%S")
                 infoRefs.date.Text=os.date("%d/%m/%Y")
-                infoRefs.ver.Text="v6.0"
-                infoRefs.storage.Text=hfa and "FILE OK" or "MEM"
-                infoRefs.storage.TextColor3=hfa and G or YEL
+                infoRefs.ver.Text="v7.0"
                 local a={}
                 if tg.ghost then table.insert(a,"GHOST") end
                 if tg.hover then table.insert(a,"HOVER") end
                 if tg.espLine then table.insert(a,"LINE") end
-                if tg.itemLine then table.insert(a,"ITEM") end
-                if tg.npcAim then table.insert(a,"NPC_AIM") end
                 if tg.antiVoid then table.insert(a,"VOID") end
                 if tg.antiAFK then table.insert(a,"AFK") end
                 if tg.trail then table.insert(a,"TRAIL") end
@@ -1604,60 +1301,22 @@ UIS.InputEnded:Connect(function(i)
 end)
 main.Position=toggleBtn.Position
 
--- RENDER LOOP (fix lag: bỏ scanItems tự động, chỉ quét khi cần)
+-- RENDER LOOP
 local epsTimer=0 local rT=0
 local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
 
-RS.Heartbeat:Connect(function(dt)
+RS.RenderStepped:Connect(function(dt)
     pcall(function()
         rT=tick()
-        -- rain (chỉ khi menu mở)
+        -- Rain (chỉ khi menu mở)
         if menuOpen then
             for _,c in ipairs(rainCols) do
-                c.offset=c.offset+c.speed*dt*3
-                if c.offset>500 then c.offset=-500 end
+                c.offset=c.offset+c.speed*dt*2
+                if c.offset>300 then c.offset=-300 end
                 c.lbl.Position=UDim2.new(c.lbl.Position.X.Scale,c.lbl.Position.X.Offset,0,c.offset)
             end
         end
         tglGlow.Transparency=0.7+math.abs(math.sin(rT*2))*0.2
-
-        -- Item line (không scan tự động, chỉ vẽ cái cache có sẵn)
-        if tg.itemLine and drawingAvailable then
-            if #itemCache==0 then task.spawn(scanItems) end
-            local ct2=Vector2.new(cam.ViewportSize.X/2,cam.ViewportSize.Y/2)
-            for i,it in ipairs(itemCache) do
-                if it.obj and it.obj.Parent then
-                    local line=itemLines[i]
-                    if not line then
-                        local okk,r=pcall(function() return Drawing.new("Line") end)
-                        if okk and r then
-                            r.Thickness=1.5 r.Transparency=0.3 r.Color=YEL
-                            itemLines[i]=r line=r
-                        end
-                    end
-                    if line then
-                        local pos=getPos(it.obj)
-                        if pos then
-                            local v,on2=cam:WorldToViewportPoint(pos)
-                            if on2 then
-                                line.From=ct2
-                                line.To=Vector2.new(v.X,v.Y)
-                                line.Visible=true
-                            else line.Visible=false end
-                        else line.Visible=false end
-                    end
-                elseif itemLines[i] then
-                    pcall(function() itemLines[i]:Remove() end)
-                    itemLines[i]=nil
-                end
-            end
-            for i=#itemCache+1,#itemLines do
-                if itemLines[i] then pcall(function() itemLines[i]:Remove() end) itemLines[i]=nil end
-            end
-        elseif not tg.itemLine then
-            for i,l in pairs(itemLines) do pcall(function() l:Remove() end) end
-            itemLines={}
-        end
 
         -- ESP Line
         if tg.espLine and drawingAvailable then
@@ -1727,42 +1386,13 @@ RS.Heartbeat:Connect(function(dt)
                             for _,d in ipairs(data.dots) do
                                 d.y=d.y+rT*d.speed*d.dir*0.01
                                 if d.y>1.1 then d.y=-0.1 elseif d.y<-0.1 then d.y=1.1 end
-                                local wob=math.sin(rT*3+d.x*10)*0.03
-                                d.obj.Position=UDim2.new(d.x+wob,0,d.y,0)
+                                d.obj.Position=UDim2.new(d.x,0,d.y,0)
                             end
                             local ringT=(rT*0.6)%1
                             data.ring.Size=UDim2.new(ringT,0,ringT,0)
                             data.ringStroke.Transparency=ringT*0.9
-                            if rT>data.nextTick then
-                                local tk=data.ticks[math.random(1,#data.ticks)]
-                                if tk then
-                                    tk.Visible=true
-                                    tk.Position=UDim2.new(math.random(),0,math.random(),0)
-                                    task.delay(0.15,function() if tk and tk.Parent then tk.Visible=false end end)
-                                end
-                                data.nextTick=rT+math.random(4,12)/100
-                            end
-                            if rT>data.nextGlitch then
-                                local g=data.glitches[math.random(1,#data.glitches)]
-                                if g then
-                                    g.Visible=true
-                                    g.Position=UDim2.new(math.random(-3,3),0,math.random(),0)
-                                    g.BackgroundTransparency=math.random(40,70)/100
-                                    task.delay(0.05,function() if g and g.Parent then g.Visible=false end end)
-                                end
-                                data.nextGlitch=rT+math.random(6,18)/10
-                            end
-                            if math.random()>0.9 then
-                                local s1="" local s2=""
-                                for i=1,10 do s1=s1..(math.random()>0.5 and "1" or "0") end
-                                for i=1,10 do s2=s2..(math.random()>0.5 and "1" or "0") end
-                                data.dataL.Text=s1 data.dataR.Text=s2
-                            end
                             local hp2=math.floor(h2.Health/h2.MaxHealth*100)
                             data.dataTop.Text="HP:"..hp2.."%"
-                            local vel=hr2.AssemblyLinearVelocity
-                            local spd=math.floor(math.sqrt(vel.X^2+vel.Z^2))
-                            data.dataBot.Text="VEL:"..spd
                             if data.hl then
                                 data.hl.FillTransparency=0.85+math.abs(math.sin(rT*2.5))*0.05
                             end
@@ -1772,18 +1402,7 @@ RS.Heartbeat:Connect(function(dt)
             end
         end
 
-        -- NPC AIMLOCK (fix chim)
-        if tg.npcAim and npcTarget and npcTarget.Parent then
-            local hr=npcTarget:FindFirstChild("HumanoidRootPart")
-            if not hr then hr=npcTarget:FindFirstChildWhichIsA("BasePart") end
-            if hr and hr.Position then
-                cam.CFrame=cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position,hr.Position),0.4)
-            else
-                npcTarget=nil
-            end
-        end
-
-        -- AIMLOCK PLAYER
+        -- Aimlock Player
         if tg.aimE or tg.aimA then
             local c=pl.Character
             if c and c:FindFirstChild("HumanoidRootPart") then
@@ -1854,7 +1473,7 @@ RS.Heartbeat:Connect(function(dt)
                 end
             end
         end
-        if (tg.espName or tg.espHp or tg.espDist or tg.espBody) and tick()-epsTimer>2 then
+        if (tg.espName or tg.espHp or tg.espDist or tg.espBody) and tick()-epsTimer>3 then
             epsTimer=tick()
             rescanESP()
             applyESPToggles()
@@ -1888,29 +1507,15 @@ for _,p in ipairs(P:GetPlayers()) do
 end
 applyESPToggles()
 
-local scan=Instance.new("Frame",ct)
-scan.Size=UDim2.new(1,0,0,2) scan.BackgroundColor3=G
-scan.BackgroundTransparency=0.7 scan.BorderSizePixel=0 scan.ZIndex=120
-local scanY=0
-RS.Heartbeat:Connect(function(dt)
-    if menuOpen then
-        scanY=(scanY+dt*0.3)%1
-        scan.Position=UDim2.new(0,0,scanY,0)
-    end
-end)
+-- FPS counter status bar (nhẹ)
 task.spawn(function()
-    while toggleBtn.Parent do
-        task.wait(math.random(3,7))
-        if menuOpen and not bootRunning and title.Text~="" then
-            local orig=title.Text
-            title.Text="> ROOT@NEKO:~$ "..string.rep("▒",math.random(3,8))
-            task.wait(0.06)
-            title.Text=orig
-        end
+    while true do
+        task.wait(1)
+        pcall(function() fpsLbl.Text=math.floor(frmCnt*1).." FPS" frmCnt=0 end)
     end
 end)
 
-print("[HACKER NEKO v6] loaded - NO-LAG + BIRD AIM + VIP FPS")
+print("[HACKER NEKO v7 LITE] loaded")
 
 end)
 
