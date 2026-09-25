@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v12.2 — FULL FIX ========================
+-- ============ HACKER NEKO v12.3 — FOV CIRCLE ======================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -48,16 +48,17 @@ local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
 local hitboxOn = false
 local hitboxRange = 15
+local fovCircle = {
+    enabled = true,
+    radius = 150,
+    hue = 0,
+    drawing = nil,
+}
 local aim = {
     enabled = false,
-    fov = 90,
-    smooth = 0.3,
+    smooth = 0.35,
     checkTeam = true,
-    holdRMB = false,
     target = nil,
-    predict = true,
-    prediction = 0.05,
-    aimMode = "head",  -- "head" | "root" | "nearest"
 }
 local teleportTo
 
@@ -625,20 +626,12 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- ==================================================================
--- ============ HITBOX (firetouchinterest spam) =====================
--- ==================================================================
--- Đây là cách THẬT SỰ hoạt động client-side:
--- 1. Spam firetouchinterest vào HumanoidRootPart + Head + UpperTorso của enemy
--- 2. Server nhận được touch event → tính damage
--- 3. Kết hợp tool:Activate() để game fire attack của nó
--- 4. Range lớn hơn → hit enemy xa hơn
-
+-- ============ HITBOX (firetouch spam) ============
 local hitboxTick = 0
 RS.Heartbeat:Connect(function(dt)
     if not hitboxOn then return end
     hitboxTick = hitboxTick + dt
-    if hitboxTick < 0.03 then return end  -- 30Hz, không spam quá nhiều
+    if hitboxTick < 0.03 then return end
     hitboxTick = 0
 
     local c = pl.Character
@@ -651,20 +644,11 @@ RS.Heartbeat:Connect(function(dt)
             if tHrp then
                 local d = (tHrp.Position - hrp.Position).Magnitude
                 if d <= hitboxRange then
-                    -- Fire touch vào TẤT CẢ part của enemy
                     for _, part in ipairs(p.Character:GetChildren()) do
                         if part:IsA("BasePart") then
                             pcall(function()
                                 firetouchinterest(hrp, part, 0)
                                 firetouchinterest(hrp, part, 1)
-                            end)
-                            pcall(function()
-                                for _, myPart in ipairs(c:GetChildren()) do
-                                    if myPart:IsA("BasePart") then
-                                        firetouchinterest(myPart, part, 0)
-                                        firetouchinterest(myPart, part, 1)
-                                    end
-                                end
                             end)
                         end
                     end
@@ -749,6 +733,17 @@ local function fireAttack()
     end
 end
 
+-- ============ FOV CIRCLE CHECK ============
+local function isInFovCircle(worldPos)
+    if not fovCircle.enabled then return true end
+    local screenPos, onScreen = cam:WorldToViewportPoint(worldPos)
+    if not onScreen then return false end
+    local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+    local diff = Vector2.new(screenPos.X, screenPos.Y) - center
+    return diff.Magnitude <= fovCircle.radius
+end
+
+-- ============ AUTO ATTACK ============
 local function aaApplySpeed()
     local c=pl.Character if not c then return end
     for _,v in ipairs(c:GetDescendants()) do
@@ -785,6 +780,10 @@ end
 local aaAccum=0
 RS.Heartbeat:Connect(function(dt)
     if not aa.enabled or not aa.target or not aa.target.Parent then aaAccum=0 return end
+    local tChar = aa.target.Character
+    if not tChar then aaAccum=0 return end
+    local tHrp = tChar:FindFirstChild("HumanoidRootPart")
+    if not tHrp or not isInFovCircle(tHrp.Position) then aaAccum=0 return end
     local spd=aa.speed if spd<1 then spd=1 end
     aaAccum=aaAccum+spd*dt
     local count=math.floor(aaAccum)
@@ -798,15 +797,17 @@ end)
 local aaLastTp = 0
 RS.Heartbeat:Connect(function()
     if not aa.enabled or not aa.target or not aa.target.Parent then return end
-    local tc = aa.target.Character if not tc then return end
-    local thr = tc:FindFirstChild("HumanoidRootPart") if not thr then return end
+    local tCharCheck = aa.target.Character
+    if not tCharCheck then return end
+    local tHrpCheck = tCharCheck:FindFirstChild("HumanoidRootPart")
+    if not tHrpCheck or not isInFovCircle(tHrpCheck.Position) then return end
     local c = pl.Character
     local hr = c and c:FindFirstChild("HumanoidRootPart") if not hr then return end
 
     local now = tick()
     if now - aaLastTp < 0.15 then return end
 
-    local targetPos = thr.Position + Vector3.new(0, aa.hoverDist, 0)
+    local targetPos = tHrpCheck.Position + Vector3.new(0, aa.hoverDist, 0)
     if (hr.Position - targetPos).Magnitude > 2 then
         pcall(function() hr:SetNetworkOwner(pl) end)
         hr.CFrame = CFrame.new(targetPos)
@@ -816,9 +817,7 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- ==================================================================
--- ============ AIMLOCK (FPS + TPS, aim vào HEAD) ===================
--- ==================================================================
+-- ============ AIMLOCK (chỉ trong FOV circle) ============
 local function isEnemyForAim(p)
     if p == pl then return false end
     if not p.Character then return false end
@@ -832,45 +831,23 @@ local function isEnemyForAim(p)
     return true
 end
 
-local function getAimPart(p)
-    if not p.Character then return nil end
-    if aim.aimMode == "head" then
-        return p.Character:FindFirstChild("Head") or p.Character:FindFirstChild("HumanoidRootPart")
-    elseif aim.aimMode == "root" then
-        return p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Head")
-    else
-        -- nearest: chọn part gần cam nhất
-        local camPos = cam.CFrame.Position
-        local best, bestD = nil, math.huge
-        for _, part in ipairs(p.Character:GetChildren()) do
-            if part:IsA("BasePart") then
-                local d = (part.Position - camPos).Magnitude
-                if d < bestD then bestD = d best = part end
-            end
-        end
-        return best
-    end
-end
-
 local function findAimTarget()
     local camPos = cam.CFrame.Position
     local camLook = cam.CFrame.LookVector
     local bestTarget, bestScore = nil, math.huge
     for _, p in ipairs(P:GetPlayers()) do
         if isEnemyForAim(p) then
-            local part = getAimPart(p)
-            if part then
-                local dir = part.Position - camPos
+            local head = p.Character:FindFirstChild("Head")
+            if head and isInFovCircle(head.Position) then
+                local dir = head.Position - camPos
                 local dist = dir.Magnitude
                 if dist > 0.5 and dist < 1500 then
                     local dot = math.clamp(camLook.Unit:Dot(dir.Unit), -1, 1)
                     local angle = math.deg(math.acos(dot))
-                    if angle <= aim.fov / 2 then
-                        local score = dist + angle * 3
-                        if score < bestScore then
-                            bestScore = score
-                            bestTarget = {part=part, player=p}
-                        end
+                    local score = dist + angle * 3
+                    if score < bestScore then
+                        bestScore = score
+                        bestTarget = {part=head, player=p}
                     end
                 end
             end
@@ -892,16 +869,11 @@ local function isFPSMode()
     return false
 end
 
--- Bind camera với priority CAO HƠN camera mặc định
 pcall(function()
     RS:UnbindFromRenderStep("NekoAimlock")
 end)
 RS:BindToRenderStep("NekoAimlock", Enum.RenderPriority.Camera.Value + 1, function(dt)
-    local active = aim.enabled
-    if active and aim.holdRMB then
-        active = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-    end
-    if not active then
+    if not aim.enabled then
         aim.target = nil
         return
     end
@@ -918,12 +890,9 @@ RS:BindToRenderStep("NekoAimlock", Enum.RenderPriority.Camera.Value + 1, functio
 
     local camPos = cam.CFrame.Position
     local targetPos = part.Position
-
-    if aim.predict and found.player.Character then
-        local hr = found.player.Character:FindFirstChild("HumanoidRootPart")
-        if hr then
-            targetPos = part.Position + hr.AssemblyLinearVelocity * (aim.prediction or 0.05)
-        end
+    local hr = found.player.Character and found.player.Character:FindFirstChild("HumanoidRootPart")
+    if hr then
+        targetPos = part.Position + hr.AssemblyLinearVelocity * 0.05
     end
 
     local desiredCF = CFrame.lookAt(camPos, targetPos)
@@ -933,6 +902,34 @@ RS:BindToRenderStep("NekoAimlock", Enum.RenderPriority.Camera.Value + 1, functio
         smooth = math.max(smooth, 0.5)
     end
     cam.CFrame = cam.CFrame:Lerp(desiredCF, math.clamp(smooth, 0.01, 1))
+end)
+
+-- ============ FOV CIRCLE RENDER (rainbow) ============
+local drawingOK = (Drawing ~= nil and Drawing.new ~= nil)
+if drawingOK then
+    pcall(function()
+        fovCircle.drawing = Drawing.new("Circle")
+        fovCircle.drawing.Thickness = 2
+        fovCircle.drawing.NumSides = 60
+        fovCircle.drawing.Filled = false
+        fovCircle.drawing.Transparency = 1
+    end)
+end
+
+RS.RenderStepped:Connect(function(dt)
+    if not drawingOK or not fovCircle.drawing then return end
+    if not fovCircle.enabled then
+        pcall(function() fovCircle.drawing.Visible = false end)
+        return
+    end
+    fovCircle.hue = (fovCircle.hue + dt * 0.5) % 1
+    pcall(function()
+        local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+        fovCircle.drawing.Position = center
+        fovCircle.drawing.Radius = fovCircle.radius
+        fovCircle.drawing.Color = Color3.fromHSV(fovCircle.hue, 1, 1)
+        fovCircle.drawing.Visible = true
+    end)
 end)
 
 -- ============ ESP PLAYER ============
@@ -978,19 +975,20 @@ local function buildESP(char)
     distLbl.Font=Enum.Font.Code distLbl.TextSize=14 distLbl.TextXAlignment=Enum.TextXAlignment.Center
     distLbl.Visible=tg.espDist
 
+    -- HP BAR NHỎ (6x40)
     local hpBB=Instance.new("BillboardGui",fold)
-    hpBB.Adornee=hr hpBB.Size=UDim2.new(0,12,0,70) hpBB.StudsOffset=Vector3.new(2.3,0.5,0)
+    hpBB.Adornee=hr hpBB.Size=UDim2.new(0,6,0,40) hpBB.StudsOffset=Vector3.new(1.4,0.3,0)
     hpBB.AlwaysOnTop=true hpBB.LightInfluence=0 hpBB.MaxDistance=5000
     hpBB.Enabled=tg.espHp
 
     local hpBg=Instance.new("Frame",hpBB)
     hpBg.Size=UDim2.new(1,0,1,0) hpBg.BackgroundColor3=Color3.fromRGB(0,20,10)
     hpBg.BackgroundTransparency=0.2 hpBg.BorderSizePixel=1 hpBg.BorderColor3=G
-    Instance.new("UICorner",hpBg).CornerRadius=UDim.new(0,4)
+    Instance.new("UICorner",hpBg).CornerRadius=UDim.new(0,2)
     local hpFill=Instance.new("Frame",hpBg)
     hpFill.AnchorPoint=Vector2.new(0,1) hpFill.Position=UDim2.new(0,0,1,0)
     hpFill.Size=UDim2.new(1,0,1,0) hpFill.BackgroundColor3=G hpFill.BorderSizePixel=0
-    Instance.new("UICorner",hpFill).CornerRadius=UDim.new(0,4)
+    Instance.new("UICorner",hpFill).CornerRadius=UDim.new(0,2)
 
     local m=measureBody(char)
     local fxBB=Instance.new("BillboardGui",fold)
@@ -1125,7 +1123,6 @@ mkTog(pages["ESP"],"ESP DISTANCE",false,function(on) tg.espDist=on applyESPToggl
 mkTog(pages["ESP"],"ESP BODY FX",false,function(on) tg.espBody=on applyESPToggles() end)
 
 mkSec(pages["COMBAT"],"// AUTO ATTACK")
-mkSli(pages["COMBAT"],"Hover Dist",0,10,0,function(v) aa.hoverDist=v end)
 local aaTargetBtn=mkBtn(pages["COMBAT"],"TARGET: (none)",function() end)
 local function openTargetPicker()
     dlgTitle.Text="> SELECT TARGET PLAYER"
@@ -1141,26 +1138,28 @@ local function openTargetPicker()
     dlg.Visible=true dlgOverlay.Visible=true
 end
 aaTargetBtn.MouseButton1Click:Connect(function() openTargetPicker() end)
-mkTog(pages["COMBAT"],"AUTO ATTACK",false,function(on)
+mkTog(pages["COMBAT"],"AUTO ATTACK (khi trong vòng)",false,function(on)
     if on and not aa.target then aaTargetBtn.Text="  > TARGET: chon truoc!" return end
     aa.enabled=on aa.atkSpd=on aa.hoverOn=on
     if on then aaLastTp = 0 end
 end)
 
-mkSec(pages["COMBAT"],"// HITBOX / RANGE")
-mkTog(pages["COMBAT"],"HITBOX EXPAND (firetouch)",false,function(on) hitboxOn = on end)
-mkSli(pages["COMBAT"],"Hitbox Range (m)",5,60,15,function(v) hitboxRange = v end)
+mkSec(pages["COMBAT"],"// HITBOX")
+mkTog(pages["COMBAT"],"HITBOX EXPAND",false,function(on) hitboxOn = on end)
 
-mkSec(pages["COMBAT"],"// AIMLOCK (HEAD)")
-mkTog(pages["COMBAT"],"AIMLOCK",false,function(on) aim.enabled=on end)
-mkTog(pages["COMBAT"],"CHỈ AIM KHI GIỮ CHUỘT PHẢI",false,function(on) aim.holdRMB=on end)
-mkTog(pages["COMBAT"],"BỎ QUA ĐỒNG ĐỘI",true,function(on) aim.checkTeam=on end)
-mkTog(pages["COMBAT"],"DỰ ĐOÁN VỊ TRÍ",true,function(on) aim.predict=on end)
-mkSli(pages["COMBAT"],"Aim FOV (độ)",15,180,90,function(v) aim.fov=v end)
-mkSli(pages["COMBAT"],"Aim Smooth",0.05,1,0.3,function(v) aim.smooth=v end)
-mkSli(pages["COMBAT"],"Prediction (s)",0,0.2,0.05,function(v) aim.prediction=v end)
-mkBtn(pages["COMBAT"],"AIM MODE: HEAD",function() end)
-mkBtn(pages["COMBAT"],"AIM MODE: ROOT",function() end)
+mkSec(pages["COMBAT"],"// FOV CIRCLE")
+mkTog(pages["COMBAT"],"SHOW FOV CIRCLE",true,function(on) fovCircle.enabled = on end)
+mkSli(pages["COMBAT"],"FOV Radius",50,400,150,function(v) fovCircle.radius = v end)
+
+mkSec(pages["COMBAT"],"// AIMLOCK")
+mkTog(pages["COMBAT"],"AIMLOCK (Head, trong vòng)",false,function(on)
+    aim.enabled = on
+    aim.checkTeam = true
+    if on then
+        stLbl.Text = "[ OK ] Aimlock: ON"
+        stLbl.TextColor3 = G
+    end
+end)
 
 mkSec(pages["PLAYER"],"// PERFORMANCE")
 mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on setFPS(on) end)
@@ -1431,7 +1430,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v12.2"
+                infoRefs.ver.Text="v12.3"
                 local a={}
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
@@ -1673,7 +1672,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v12.2] loaded")
+print("[HACKER NEKO v12.3] loaded")
 
 end)
 
