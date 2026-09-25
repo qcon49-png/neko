@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v12.0 — AIMLOCK =========================
+-- ============ HACKER NEKO v12.2 — FULL FIX ========================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -46,7 +46,8 @@ local stt={ws=16,jp=50}
 local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
     noclip=false,mapBright=false,fps=false,infJump=false}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
-local hitboxScale = 1
+local hitboxOn = false
+local hitboxRange = 15
 local aim = {
     enabled = false,
     fov = 90,
@@ -54,10 +55,12 @@ local aim = {
     checkTeam = true,
     holdRMB = false,
     target = nil,
+    predict = true,
+    prediction = 0.05,
+    aimMode = "head",  -- "head" | "root" | "nearest"
 }
 local teleportTo
 
--- WAYPOINT STORAGE
 local hfa=(writefile~=nil) and (readfile~=nil) and (isfile~=nil)
 local WPF="NekoWPs_"..tostring(game.PlaceId)..".json"
 local wps = {nil, nil, nil, nil, nil, nil, nil, nil}
@@ -87,7 +90,6 @@ local function cfFromArr(arr)
     return CFrame.new(arr[1],arr[2],arr[3],arr[4],arr[5],arr[6],arr[7],arr[8],arr[9],arr[10],arr[11],arr[12])
 end
 
--- TOGGLE BUTTON
 local toggleBtn=Instance.new("Frame",sg)
 toggleBtn.Size=UDim2.new(0,48,0,48) toggleBtn.Position=UDim2.new(0,30,0,120)
 toggleBtn.BackgroundColor3=BG toggleBtn.BackgroundTransparency=0.15
@@ -103,7 +105,6 @@ dot.Size=UDim2.new(0,5,0,5) dot.Position=UDim2.new(1,-9,0,4)
 dot.BackgroundColor3=G dot.BorderSizePixel=0 dot.ZIndex=502
 Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
 
--- MAIN
 local main=Instance.new("Frame",sg)
 main.Size=UDim2.new(0,420,0,340)
 main.Position=UDim2.new(0,30,0,120)
@@ -362,7 +363,6 @@ local function mkBtn(parent,name,cb)
     return b
 end
 
--- ============ MASTER LIGHTING SNAPSHOT ============
 local BASE_LIGHTING = {
     Brightness = L.Brightness, ClockTime = L.ClockTime,
     Ambient = L.Ambient, OutdoorAmbient = L.OutdoorAmbient,
@@ -399,7 +399,6 @@ local function reapplyLighting()
     end
 end
 
--- ============ FPS BOOST ============
 local fpsSaved = {active=false, gen=0, parts={}, effects={}, postFx={}, atmos={}, terrain={}, conns={}, qualityLevel=nil}
 local fpsQueue = {}
 local fpsQueueRunning = false
@@ -529,7 +528,6 @@ end
 
 local function setFPS(on) if on then enableFPS() else disableFPS() end end
 
--- ============ MAP BRIGHT ============
 local mbPostFx = {} local mbAtmos = {}
 local function setMapBright(on)
     if on then
@@ -558,9 +556,6 @@ local function setMapBright(on)
     end
 end
 
--- ==================================================================
--- ============ TELEPORT SYSTEM ====================================
--- ==================================================================
 local teleportBusy = false
 teleportTo = function(targetPos, opts)
     opts = opts or {}
@@ -604,9 +599,6 @@ teleportTo = function(targetPos, opts)
     return true
 end
 
--- ==================================================================
--- ============ FALL DAMAGE PROTECTION =============================
--- ==================================================================
 local fallProtectUntil = 0
 local fallLastHp = 0
 
@@ -634,59 +626,54 @@ RS.Heartbeat:Connect(function()
 end)
 
 -- ==================================================================
--- ============ HITBOX EXPANDER ====================================
+-- ============ HITBOX (firetouchinterest spam) =====================
 -- ==================================================================
-local hitboxExtra = {}
-local hrpOriginalSize = nil
+-- Đây là cách THẬT SỰ hoạt động client-side:
+-- 1. Spam firetouchinterest vào HumanoidRootPart + Head + UpperTorso của enemy
+-- 2. Server nhận được touch event → tính damage
+-- 3. Kết hợp tool:Activate() để game fire attack của nó
+-- 4. Range lớn hơn → hit enemy xa hơn
 
-local function clearHitboxExtra()
-    for _, p in ipairs(hitboxExtra) do
-        pcall(function() p:Destroy() end)
-    end
-    hitboxExtra = {}
-end
+local hitboxTick = 0
+RS.Heartbeat:Connect(function(dt)
+    if not hitboxOn then return end
+    hitboxTick = hitboxTick + dt
+    if hitboxTick < 0.03 then return end  -- 30Hz, không spam quá nhiều
+    hitboxTick = 0
 
-local function applyHitbox(scale)
     local c = pl.Character
-    if not c then return end
-    local hrp = c:FindFirstChild("HumanoidRootPart")
+    local hrp = c and c:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    if hrpOriginalSize then
-        pcall(function() hrp.Size = hrpOriginalSize end)
-    end
-    clearHitboxExtra()
-    if scale <= 1 then return end
-    if not hrpOriginalSize then hrpOriginalSize = hrp.Size end
-    pcall(function() hrp.Size = hrpOriginalSize * scale end)
-    local size = (scale - 1) * 2
-    local positions = {
-        Vector3.new(size, 0, 0),
-        Vector3.new(-size, 0, 0),
-        Vector3.new(0, 0, size),
-        Vector3.new(0, 0, -size),
-    }
-    for _, offset in ipairs(positions) do
-        local p = Instance.new("Part")
-        p.Size = Vector3.new(size*1.5, 4, size*1.5)
-        p.CanCollide = false
-        p.CanTouch = true
-        p.CanQuery = true
-        p.Transparency = 1
-        p.Massless = true
-        p.Anchored = false
-        p.CFrame = hrp.CFrame + offset
-        p.Parent = c
-        local weld = Instance.new("WeldConstraint")
-        weld.Part0 = hrp
-        weld.Part1 = p
-        weld.Parent = p
-        table.insert(hitboxExtra, p)
-    end
-end
 
--- ==================================================================
--- ============ CHARACTER SETUP ====================================
--- ==================================================================
+    for _, p in ipairs(P:GetPlayers()) do
+        if p ~= pl and p.Character then
+            local tHrp = p.Character:FindFirstChild("HumanoidRootPart")
+            if tHrp then
+                local d = (tHrp.Position - hrp.Position).Magnitude
+                if d <= hitboxRange then
+                    -- Fire touch vào TẤT CẢ part của enemy
+                    for _, part in ipairs(p.Character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            pcall(function()
+                                firetouchinterest(hrp, part, 0)
+                                firetouchinterest(hrp, part, 1)
+                            end)
+                            pcall(function()
+                                for _, myPart in ipairs(c:GetChildren()) do
+                                    if myPart:IsA("BasePart") then
+                                        firetouchinterest(myPart, part, 0)
+                                        firetouchinterest(myPart, part, 1)
+                                    end
+                                end
+                            end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
 local function onCharSpawn(char)
     local hr = char:WaitForChild("HumanoidRootPart", 10)
     local h = char:WaitForChild("Humanoid", 10)
@@ -695,10 +682,6 @@ local function onCharSpawn(char)
     if not hr.Parent then return end
     pcall(function() hr:SetNetworkOwner(pl) end)
     setupNoFallDmg(char)
-    if hitboxScale > 1 then
-        task.wait(0.3)
-        applyHitbox(hitboxScale)
-    end
     if tg.noclip then
         task.wait(0.2)
         setNoclip(true)
@@ -715,7 +698,6 @@ if pl.Character then
     end)
 end
 
--- ============ ATTACK REMOTES ============
 local attackRemotes={}
 local function scanAttackRemotes()
     local tmp={}
@@ -767,7 +749,6 @@ local function fireAttack()
     end
 end
 
--- ============ AUTO ATTACK ============
 local function aaApplySpeed()
     local c=pl.Character if not c then return end
     for _,v in ipairs(c:GetDescendants()) do
@@ -814,7 +795,6 @@ RS.Heartbeat:Connect(function(dt)
     if aa.atkSpd then aaApplySpeed() end
 end)
 
--- Auto attack teleport (throttled)
 local aaLastTp = 0
 RS.Heartbeat:Connect(function()
     if not aa.enabled or not aa.target or not aa.target.Parent then return end
@@ -837,7 +817,7 @@ RS.Heartbeat:Connect(function()
 end)
 
 -- ==================================================================
--- ============ AIMLOCK (kẻ địch gần nhất) =========================
+-- ============ AIMLOCK (FPS + TPS, aim vào HEAD) ===================
 -- ==================================================================
 local function isEnemyForAim(p)
     if p == pl then return false end
@@ -852,15 +832,35 @@ local function isEnemyForAim(p)
     return true
 end
 
+local function getAimPart(p)
+    if not p.Character then return nil end
+    if aim.aimMode == "head" then
+        return p.Character:FindFirstChild("Head") or p.Character:FindFirstChild("HumanoidRootPart")
+    elseif aim.aimMode == "root" then
+        return p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Head")
+    else
+        -- nearest: chọn part gần cam nhất
+        local camPos = cam.CFrame.Position
+        local best, bestD = nil, math.huge
+        for _, part in ipairs(p.Character:GetChildren()) do
+            if part:IsA("BasePart") then
+                local d = (part.Position - camPos).Magnitude
+                if d < bestD then bestD = d best = part end
+            end
+        end
+        return best
+    end
+end
+
 local function findAimTarget()
     local camPos = cam.CFrame.Position
     local camLook = cam.CFrame.LookVector
     local bestTarget, bestScore = nil, math.huge
     for _, p in ipairs(P:GetPlayers()) do
         if isEnemyForAim(p) then
-            local head = p.Character:FindFirstChild("Head")
-            if head then
-                local dir = head.Position - camPos
+            local part = getAimPart(p)
+            if part then
+                local dir = part.Position - camPos
                 local dist = dir.Magnitude
                 if dist > 0.5 and dist < 1500 then
                     local dot = math.clamp(camLook.Unit:Dot(dir.Unit), -1, 1)
@@ -869,7 +869,7 @@ local function findAimTarget()
                         local score = dist + angle * 3
                         if score < bestScore then
                             bestScore = score
-                            bestTarget = head
+                            bestTarget = {part=part, player=p}
                         end
                     end
                 end
@@ -879,7 +879,24 @@ local function findAimTarget()
     return bestTarget
 end
 
-RS.RenderStepped:Connect(function(dt)
+local function isFPSMode()
+    if cam.CameraSubject then
+        local subj = cam.CameraSubject
+        if subj:IsA("Humanoid") and pl.Character and subj.Parent == pl.Character then
+            local head = pl.Character:FindFirstChild("Head")
+            if head and (cam.CFrame.Position - head.Position).Magnitude < 2 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Bind camera với priority CAO HƠN camera mặc định
+pcall(function()
+    RS:UnbindFromRenderStep("NekoAimlock")
+end)
+RS:BindToRenderStep("NekoAimlock", Enum.RenderPriority.Camera.Value + 1, function(dt)
     local active = aim.enabled
     if active and aim.holdRMB then
         active = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
@@ -888,13 +905,34 @@ RS.RenderStepped:Connect(function(dt)
         aim.target = nil
         return
     end
-    local target = findAimTarget()
-    aim.target = target
-    if target then
-        local camPos = cam.CFrame.Position
-        local desiredCF = CFrame.lookAt(camPos, target.Position)
-        cam.CFrame = cam.CFrame:Lerp(desiredCF, math.clamp(aim.smooth, 0.01, 1))
+
+    local found = findAimTarget()
+    if not found then
+        aim.target = nil
+        return
     end
+    aim.target = found.player
+
+    local part = found.part
+    if not part or not part.Parent then return end
+
+    local camPos = cam.CFrame.Position
+    local targetPos = part.Position
+
+    if aim.predict and found.player.Character then
+        local hr = found.player.Character:FindFirstChild("HumanoidRootPart")
+        if hr then
+            targetPos = part.Position + hr.AssemblyLinearVelocity * (aim.prediction or 0.05)
+        end
+    end
+
+    local desiredCF = CFrame.lookAt(camPos, targetPos)
+
+    local smooth = aim.smooth
+    if isFPSMode() then
+        smooth = math.max(smooth, 0.5)
+    end
+    cam.CFrame = cam.CFrame:Lerp(desiredCF, math.clamp(smooth, 0.01, 1))
 end)
 
 -- ============ ESP PLAYER ============
@@ -1029,7 +1067,6 @@ task.spawn(function()
     end
 end)
 
--- ============ NOCLIP ============
 local noclipSaved = {}
 local noclipConn = nil
 local function noclipApply(part)
@@ -1073,9 +1110,7 @@ task.spawn(function()
     end
 end)
 
--- ==================================================================
--- ============ POPULATE UI ========================================
--- ==================================================================
+-- ============ POPULATE UI ============
 mkSec(pages["MOVE"],"// SPEED")
 mkSli(pages["MOVE"],"Walk Speed",16,500,16,function(v) stt.ws=v end)
 mkSec(pages["MOVE"],"// JUMP")
@@ -1113,17 +1148,19 @@ mkTog(pages["COMBAT"],"AUTO ATTACK",false,function(on)
 end)
 
 mkSec(pages["COMBAT"],"// HITBOX / RANGE")
-mkSli(pages["COMBAT"],"Hitbox Scale",1,5,1,function(v)
-    hitboxScale = v
-    applyHitbox(v)
-end)
+mkTog(pages["COMBAT"],"HITBOX EXPAND (firetouch)",false,function(on) hitboxOn = on end)
+mkSli(pages["COMBAT"],"Hitbox Range (m)",5,60,15,function(v) hitboxRange = v end)
 
-mkSec(pages["COMBAT"],"// AIMLOCK")
-mkTog(pages["COMBAT"],"AIMLOCK (gần nhất)",false,function(on) aim.enabled=on end)
+mkSec(pages["COMBAT"],"// AIMLOCK (HEAD)")
+mkTog(pages["COMBAT"],"AIMLOCK",false,function(on) aim.enabled=on end)
 mkTog(pages["COMBAT"],"CHỈ AIM KHI GIỮ CHUỘT PHẢI",false,function(on) aim.holdRMB=on end)
 mkTog(pages["COMBAT"],"BỎ QUA ĐỒNG ĐỘI",true,function(on) aim.checkTeam=on end)
+mkTog(pages["COMBAT"],"DỰ ĐOÁN VỊ TRÍ",true,function(on) aim.predict=on end)
 mkSli(pages["COMBAT"],"Aim FOV (độ)",15,180,90,function(v) aim.fov=v end)
 mkSli(pages["COMBAT"],"Aim Smooth",0.05,1,0.3,function(v) aim.smooth=v end)
+mkSli(pages["COMBAT"],"Prediction (s)",0,0.2,0.05,function(v) aim.prediction=v end)
+mkBtn(pages["COMBAT"],"AIM MODE: HEAD",function() end)
+mkBtn(pages["COMBAT"],"AIM MODE: ROOT",function() end)
 
 mkSec(pages["PLAYER"],"// PERFORMANCE")
 mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on setFPS(on) end)
@@ -1287,7 +1324,6 @@ task.spawn(function()
     end
 end)
 
--- INFO TAB
 local infoRoot=Instance.new("Frame",pages["INFO"])
 infoRoot.Size=UDim2.new(1,-8,0,0)
 infoRoot.AutomaticSize=Enum.AutomaticSize.Y
@@ -1395,7 +1431,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v12.0"
+                infoRefs.ver.Text="v12.2"
                 local a={}
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
@@ -1406,7 +1442,7 @@ task.spawn(function()
                 if tg.mapBright then table.insert(a,"BRIGHT") end
                 if tg.fps then table.insert(a,"FPS+") end
                 if aa.enabled then table.insert(a,"AA") end
-                if hitboxScale > 1 then table.insert(a,"HITBOX x"..hitboxScale) end
+                if hitboxOn then table.insert(a,"HITBOX") end
                 if aim.enabled then table.insert(a,"AIM") end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
@@ -1416,7 +1452,6 @@ end)
 
 switchTab("MOVE")
 
--- BOOT + MENU
 local titleTarget="> ROOT@NEKO:~$ ./run.sh"
 local bootRunning=false
 local function bootSequence()
@@ -1495,7 +1530,6 @@ UIS.InputEnded:Connect(function(i)
 end)
 main.Position=toggleBtn.Position
 
--- RENDER LOOP
 local rT=0
 local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
 local espFrame=0
@@ -1639,7 +1673,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v12.0] loaded")
+print("[HACKER NEKO v12.2] loaded")
 
 end)
 
