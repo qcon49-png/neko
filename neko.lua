@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v12.5 (LIFE PRISON FIXED) ===============
+-- ============ HACKER NEKO v12.6 (LITE EDITION) ====================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -46,21 +46,6 @@ local stt={ws=16,jp=50}
 local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
     noclip=false,mapBright=false,fps=false,infJump=false}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
-local hitboxOn = true
-local hitboxRange = 15
-
-local fovCircle = {
-    enabled = false,
-    radius = 150,
-    drawing = nil,
-}
-
-local aim = {
-    enabled = false,
-    smooth = 1,
-    target = nil,
-    silent = true, -- [FIX] Silent aim bật mặc định
-}
 
 local teleportTo
 
@@ -559,7 +544,7 @@ local function setMapBright(on)
     end
 end
 
--- ============ [FIX] TELEPORT - CHỐNG ANTI-TELE ==================
+-- ============ TELEPORT ============
 local teleportBusy = false
 teleportTo = function(targetPos, opts)
     opts = opts or {}
@@ -594,202 +579,6 @@ teleportTo = function(targetPos, opts)
     return true
 end
 
-local fallProtectUntil = 0
-local fallLastHp = 0
-
-local function setupNoFallDmg(char)
-    local h = char:WaitForChild("Humanoid", 5)
-    if not h then return end
-    pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) end)
-    fallLastHp = h.Health
-    h.HealthChanged:Connect(function(newHp)
-        if newHp < fallLastHp and tick() < fallProtectUntil then
-            h.Health = fallLastHp
-            return
-        end
-        fallLastHp = h.Health
-    end)
-end
-
-RS.Heartbeat:Connect(function()
-    local c = pl.Character
-    local hr = c and c:FindFirstChild("HumanoidRootPart")
-    if not hr then return end
-    if hr.AssemblyLinearVelocity.Y < -75 then
-        fallProtectUntil = tick() + 2
-    end
-end)
-
--- ==================================================================
--- ============ [FIX] PRISON LIFE: VIOLATION DETECTION ==============
--- ==================================================================
--- Phát hiện tù nhân đang vi phạm (ra khỏi nhà tù / có súng / Wanted)
-local PRISON_BOUNDS = {
-    -- Vùng nhà tù chính của Prison Life (có thể tinh chỉnh nếu bản mod khác)
-    center = Vector3.new(0, 0, 0),
-    radius = 500, -- Bán kính vùng tù nhân được coi là "hợp lệ"
-}
-
-local function getPlayerRole(p)
-    if not p or not p.Parent then return "none" end
-    local teamName = p.Team and string.lower(p.Team.Name) or ""
-    -- [FIX] Detect chính xác hơn theo Prison Life
-    if teamName:find("guard") or teamName:find("police") or teamName:find("cop")
-        or teamName:find("officer") or teamName:find("swat") or teamName:find("warden") then
-        return "guard"
-    end
-    if teamName:find("criminal") or teamName:find("escape") or teamName:find("fugitive") then
-        return "criminal"
-    end
-    if teamName:find("prison") or teamName:find("inmate") or teamName:find("convict") then
-        return "prisoner"
-    end
-    -- Fallback dùng TeamColor
-    if p.TeamColor then
-        local c = p.TeamColor.Color
-        if c.R > 0.5 and c.B > 0.5 then return "guard" end -- tím/xanh
-        if c.R > 0.7 and c.G > 0.4 and c.B < 0.3 then return "prisoner" end -- cam
-    end
-    return "other"
-end
-
--- [FIX] Phát hiện tù nhân vi phạm để cảnh sát aim
-local function isViolatingPrisoner(p)
-    if not p or not p.Character then return false end
-    local char = p.Character
-    
-    -- 1) Kiểm tra attribute Wanted/Status (Prison Life có dùng)
-    local attrs = {"Wanted", "WantedLevel", "Arrestable", "Status", "Hostile", "IsArrestable"}
-    for _, a in ipairs(attrs) do
-        local v = char:GetAttribute(a) or p:GetAttribute(a)
-        if v then
-            if type(v) == "boolean" and v then return true end
-            if type(v) == "number" and v > 0 then return true end
-            if type(v) == "string" and v ~= "" and v ~= "None" and v ~= "Innocent" then
-                return true
-            end
-        end
-    end
-    
-    -- 2) Tù nhân cầm vũ khí (súng) = vi phạm
-    local tool = char:FindFirstChildOfClass("Tool")
-    if tool then
-        local n = string.lower(tool.Name)
-        if n:find("gun") or n:find("pistol") or n:find("smg") or n:find("rifle")
-            or n:find("shotgun") or n:find("weapon") or n:find("knife")
-            or n:find("bat") or n:find("baton") then
-            return true
-        end
-    end
-    
-    -- 3) Ra khỏi vùng nhà tù = vi phạm
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        local pos = hrp.Position
-        -- Nếu tù nhân đi ra khỏi vùng an toàn của nhà tù
-        local distFromCenter = (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(PRISON_BOUNDS.center.X, 0, PRISON_BOUNDS.center.Z)).Magnitude
-        if distFromCenter > PRISON_BOUNDS.radius then
-            return true
-        end
-        -- Hoặc nếu Y quá cao (leo tường) hoặc quá thấp (đào hầm)
-        if pos.Y > 100 or pos.Y < -50 then
-            return true
-        end
-    end
-    
-    -- 4) Kiểm tra GUI/TextLabel hiển thị trạng thái vi phạm
-    for _, d in ipairs(char:GetDescendants()) do
-        if d:IsA("TextLabel") or d:IsA("BillboardGui") then
-            local txt = ""
-            if d:IsA("TextLabel") then txt = d.Text else
-                for _, sub in ipairs(d:GetDescendants()) do
-                    if sub:IsA("TextLabel") then txt = txt.." "..sub.Text end
-                end
-            end
-            local lt = string.lower(txt)
-            if lt:find("wanted") or lt:find("arrest") or lt:find("hostile")
-                or lt:find("escape") or lt:find("vi phạm") then
-                return true
-            end
-        end
-    end
-    
-    return false
-end
-
--- [FIX] Địch để aim: cảnh sát chỉ aim tù nhân vi phạm, tù nhân aim cảnh sát
-local function isEnemyForAim(p)
-    if p == pl then return false end
-    if not p.Character then return false end
-    local h = p.Character:FindFirstChildOfClass("Humanoid")
-    if not h or h.Health <= 0 then return false end
-
-    local myRole = getPlayerRole(pl)
-    local theirRole = getPlayerRole(p)
-
-    if myRole == "guard" then
-        -- [FIX] Chỉ aim tù nhân/criminal KHI họ vi phạm
-        if theirRole == "prisoner" or theirRole == "criminal" then
-            return isViolatingPrisoner(p)
-        end
-        return false
-    elseif myRole == "prisoner" or myRole == "criminal" then
-        -- Tù nhân/criminal aim cảnh sát (luôn hợp lệ)
-        return theirRole == "guard"
-    end
-
-    -- Fallback: khác team
-    if pl.Team and p.Team and pl.Team == p.Team then return false end
-    return true
-end
-
-local function getAimPriority(p)
-    local theirRole = getPlayerRole(p)
-    if theirRole == "criminal" then return 1
-    elseif theirRole == "prisoner" then return 2
-    elseif theirRole == "guard" then return 2
-    end
-    return 3
-end
-
--- ==================================================================
--- ============ [FIX] HITBOX - chạy nền nhưng an toàn hơn ===========
--- ==================================================================
-local hitboxTick = 0
-RS.Heartbeat:Connect(function(dt)
-    if not hitboxOn then return end
-    hitboxTick = hitboxTick + dt
-    if hitboxTick < 0.02 then return end -- ~50Hz
-    hitboxTick = 0
-
-    local c = pl.Character
-    local hrp = c and c:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    for _, p in ipairs(P:GetPlayers()) do
-        if p ~= pl and p.Character and isEnemyForAim(p) then
-            local tHrp = p.Character:FindFirstChild("HumanoidRootPart")
-            if tHrp then
-                local d = (tHrp.Position - hrp.Position).Magnitude
-                if d <= hitboxRange then
-                    -- [FIX] Chỉ đánh vào Head + HRP để tránh spam
-                    local head = p.Character:FindFirstChild("Head")
-                    if head then
-                        pcall(function()
-                            firetouchinterest(hrp, head, 0)
-                            firetouchinterest(hrp, head, 1)
-                        end)
-                    end
-                    pcall(function()
-                        firetouchinterest(hrp, tHrp, 0)
-                        firetouchinterest(hrp, tHrp, 1)
-                    end)
-                end
-            end
-        end
-    end
-end)
-
 -- ============ FORWARD DECLARE setNoclip ============
 local setNoclip
 
@@ -799,8 +588,6 @@ local function onCharSpawn(char)
     if not hr or not h then return end
     task.wait(0.4)
     if not hr.Parent then return end
-    pcall(function() hr:SetNetworkOwner(pl) end)
-    setupNoFallDmg(char)
     if tg.noclip then
         task.wait(0.2)
         if setNoclip then setNoclip(true) end
@@ -809,72 +596,16 @@ end
 pl.CharacterAdded:Connect(onCharSpawn)
 if pl.Character then
     task.spawn(function()
-        local hr = pl.Character:WaitForChild("HumanoidRootPart", 5)
-        if hr then
-            pcall(function() hr:SetNetworkOwner(pl) end)
-            setupNoFallDmg(pl.Character)
-        end
+        pl.Character:WaitForChild("HumanoidRootPart", 5)
     end)
 end
 
--- ==================================================================
--- ============ [FIX] ATTACK REMOTES - Quét kỹ hơn ==================
--- ==================================================================
-local attackRemotes={}
-local function scanAttackRemotes()
-    local tmp={}
-    local keywords={"attack","hit","damage","swing","slash","strike","punch","kick",
-        "fire","shoot","melee","combat","weapon","sword","action","kill","click"}
-    local function scanContainer(cont)
-        for _,o in ipairs(cont:GetChildren()) do
-            local ok2,isRemote=pcall(function() return o:IsA("RemoteEvent") or o:IsA("RemoteFunction") end)
-            if ok2 and isRemote then
-                local n=string.lower(o.Name)
-                for _,k in ipairs(keywords) do
-                    if n:find(k) then table.insert(tmp,{obj=o,isFunc=o:IsA("RemoteFunction")}) break end
-                end
-            end
-        end
-    end
-    pcall(function() scanContainer(game:GetService("ReplicatedStorage")) end)
-    pcall(function()
-        local rs = game:GetService("ReplicatedStorage")
-        local rem = rs:FindFirstChild("Remotes")
-        if rem then scanContainer(rem) end
-    end)
-    local c=pl.Character
-    if c then
-        local tool=c:FindFirstChildOfClass("Tool")
-        if tool then
-            for _,o in ipairs(tool:GetDescendants()) do
-                if o:IsA("RemoteEvent") then table.insert(tmp,{obj=o,isFunc=false})
-                elseif o:IsA("RemoteFunction") then table.insert(tmp,{obj=o,isFunc=true}) end
-            end
-        end
-    end
-    attackRemotes=tmp
-end
-task.spawn(function() task.wait(2) scanAttackRemotes() end)
-pl.CharacterAdded:Connect(function(c)
-    task.wait(1) scanAttackRemotes()
-    c.ChildAdded:Connect(function(ch) if ch:IsA("Tool") then task.wait(0.3) scanAttackRemotes() end end)
-end)
-if pl.Character then
-    pl.Character.ChildAdded:Connect(function(ch) if ch:IsA("Tool") then task.wait(0.3) scanAttackRemotes() end end)
-end
-
+-- ============ AUTO ATTACK: fire attack đơn giản ============
 local function fireAttack()
     local c=pl.Character
     if not c then return end
     local tool=c:FindFirstChildOfClass("Tool")
     if tool then pcall(function() tool:Activate() end) end
-    for _,r in ipairs(attackRemotes) do
-        if r.obj and r.obj.Parent then
-            pcall(function()
-                if r.isFunc then r.obj:InvokeServer() else r.obj:FireServer() end
-            end)
-        end
-    end
 end
 
 local function aaApplySpeed()
@@ -942,178 +673,6 @@ RS.Heartbeat:Connect(function()
         hr.AssemblyAngularVelocity = Vector3.zero
         aaLastTp = now
     end
-end)
-
--- ============ FOV CIRCLE CHECK ============
-local function isInFovCircle(worldPos)
-    if not fovCircle.enabled then return true end
-    local screenPos, onScreen = cam:WorldToViewportPoint(worldPos)
-    if not onScreen then return false end
-    local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
-    local diff = Vector2.new(screenPos.X, screenPos.Y) - center
-    return diff.Magnitude <= fovCircle.radius
-end
-
--- ============ FIND AIM TARGET - ƯU TIÊN HEAD ============
-local function findAimTarget()
-    local camPos = cam.CFrame.Position
-    local camLook = cam.CFrame.LookVector
-    local bestTarget, bestScore = nil, math.huge
-
-    for _, p in ipairs(P:GetPlayers()) do
-        if isEnemyForAim(p) then
-            local head = p.Character:FindFirstChild("Head")
-            if head and isInFovCircle(head.Position) then
-                local dir = head.Position - camPos
-                local dist = dir.Magnitude
-                if dist > 0.5 and dist < 1500 then
-                    local dot = math.clamp(camLook.Unit:Dot(dir.Unit), -1, 1)
-                    local angle = math.deg(math.acos(dot))
-                    local priority = getAimPriority(p)
-                    local score = angle * 10 + priority * 200 + dist * 0.1
-                    if score < bestScore then
-                        bestScore = score
-                        bestTarget = {part = head, player = p}
-                    end
-                end
-            end
-        end
-    end
-    return bestTarget
-end
-
--- ==================================================================
--- ============ [FIX] SILENT AIM 100% HIT ===========================
--- ==================================================================
--- Ghi đè Mouse.Hit / Mouse.Target để đạn luôn bay vào mục tiêu
-local mouse = pl:GetMouse()
-local mouseMT = getrawmetatable and getrawmetatable(mouse)
-local origMouseIndex
-if mouseMT and setreadonly then
-    origMouseIndex = mouseMT.__index
-    pcall(function()
-        setreadonly(mouseMT, false)
-        mouseMT.__index = newcclosure(function(t, k)
-            if aim.enabled and aim.target and aim.target.Character then
-                local tgtHead = aim.target.Character:FindFirstChild("Head")
-                if tgtHead and tgtHead.Parent then
-                    if k == "Hit" then
-                        return CFrame.new(tgtHead.Position)
-                    elseif k == "Target" then
-                        return tgtHead
-                    end
-                end
-            end
-            if type(origMouseIndex) == "function" then
-                return origMouseIndex(t, k)
-            else
-                return mouse[k]
-            end
-        end)
-        setreadonly(mouseMT, true)
-    end)
-end
-
--- Hook __namecall để redirect argument vị trí khi gun bắn
-local mt = getrawmetatable and getrawmetatable(game)
-if mt and setreadonly and hookmetamethod then
-    pcall(function()
-        local oldNamecall = mt.__namecall
-        setreadonly(mt, false)
-        mt.__namecall = newcclosure(function(self, ...)
-            local method = getnamecallmethod and getnamecallmethod() or ""
-            if aim.enabled and aim.target and aim.target.Character then
-                -- Nếu là FireServer/InvokeServer tới remote liên quan đến bắn
-                if method == "FireServer" or method == "InvokeServer" then
-                    local selfName = type(self) == "Instance" and self.Name or ""
-                    local n = string.lower(selfName)
-                    if n:find("gun") or n:find("fire") or n:find("shoot")
-                        or n:find("click") or n:find("attack") or n:find("hit") then
-                        local tgtHead = aim.target.Character and aim.target.Character:FindFirstChild("Head")
-                        if tgtHead and tgtHead.Parent then
-                            -- Thay thế argument Vector3/CFrame nào gần nhất bằng target
-                            local args = {...}
-                            for i, a in ipairs(args) do
-                                if typeof(a) == "Vector3" then
-                                    args[i] = tgtHead.Position
-                                elseif typeof(a) == "CFrame" then
-                                    args[i] = CFrame.new(tgtHead.Position)
-                                end
-                            end
-                            return oldNamecall(self, table.unpack(args))
-                        end
-                    end
-                end
-            end
-            return oldNamecall(self, ...)
-        end)
-        setreadonly(mt, true)
-    end)
-end
-
--- ==================================================================
--- ============ [FIX] AIMLOCK - SNAP + BÙ PING + SILENT =============
--- ==================================================================
-pcall(function()
-    RS:UnbindFromRenderStep("NekoAimlock")
-end)
-RS:BindToRenderStep("NekoAimlock", Enum.RenderPriority.Camera.Value + 1, function(dt)
-    if not aim.enabled then
-        aim.target = nil
-        return
-    end
-
-    local found = findAimTarget()
-    if not found or not found.part or not found.part.Parent then
-        aim.target = nil
-        return
-    end
-    aim.target = found.player
-
-    local head = found.part
-    local char = found.player.Character
-    if not char then return end
-    local hr = char:FindFirstChild("HumanoidRootPart")
-
-    local camPos = cam.CFrame.Position
-    local aimPos = head.Position
-
-    -- [FIX] Bù ping để aim chính xác
-    if hr then
-        local ping = pl:GetNetworkPing()
-        local comp = ping * 1.5 + 0.03
-        aimPos = aimPos + hr.AssemblyLinearVelocity * comp
-    end
-
-    cam.CFrame = CFrame.lookAt(camPos, aimPos)
-end)
-
--- ============ FOV CIRCLE RENDER ============
-local drawingOK = (Drawing ~= nil and Drawing.new ~= nil)
-if drawingOK then
-    pcall(function()
-        fovCircle.drawing = Drawing.new("Circle")
-        fovCircle.drawing.Thickness = 1.5
-        fovCircle.drawing.NumSides = 60
-        fovCircle.drawing.Filled = false
-        fovCircle.drawing.Transparency = 1
-        fovCircle.drawing.Color = Color3.fromRGB(0, 255, 120)
-        fovCircle.drawing.Visible = false
-    end)
-end
-
-RS.RenderStepped:Connect(function(dt)
-    if not drawingOK or not fovCircle.drawing then return end
-    pcall(function()
-        if not fovCircle.enabled then
-            fovCircle.drawing.Visible = false
-            return
-        end
-        local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
-        fovCircle.drawing.Position = center
-        fovCircle.drawing.Radius = fovCircle.radius
-        fovCircle.drawing.Visible = true
-    end)
 end)
 
 -- ============ ESP PLAYER ============
@@ -1291,108 +850,6 @@ task.spawn(function()
     end
 end)
 
--- ==================================================================
--- ============ [FIX] FAST FIRE + NO RELOAD =========================
--- ==================================================================
--- Sửa: Đặt cooldown về 0, set ammo đầy, gọi Activate với delay hợp lý
--- Tránh spam quá nhanh gây flag anti-cheat
-local extras = { fastFire = false, noReload = false }
-local lastFF = 0
-local FF_DELAY = 0.05 -- ~20 lần/giây
-
-RS.Heartbeat:Connect(function()
-    if not (extras.fastFire or extras.noReload) then return end
-    local c = pl.Character
-    if not c then return end
-    local tool = c:FindFirstChildOfClass("Tool")
-    if not tool then return end
-
-    -- Quét cả NumberValue, IntValue, StringValue chứa số
-    for _, v in ipairs(tool:GetDescendants()) do
-        local n = string.lower(v.Name)
-        if v:IsA("NumberValue") or v:IsA("IntValue") then
-            if extras.fastFire then
-                if n:find("cooldown") or n:find("firerate") or n:find("firedelay")
-                   or n:find("rate") or n:find("delay") or n:find("cd")
-                   or n:find("reload") or n:find("fire") then
-                    pcall(function() v.Value = 0 end)
-                end
-            end
-            if extras.noReload then
-                if n:find("reload") or n:find("ammo") or n:find("clip") or n:find("mag") then
-                    pcall(function()
-                        if n:find("max") then v.Value = 9999
-                        else v.Value = 9999 end
-                    end)
-                end
-            end
-        end
-    end
-
-    -- [FIX] Fast Fire thực sự: gọi Activate liên tục với rate-limit
-    if extras.fastFire then
-        local now = tick()
-        if now - lastFF >= FF_DELAY then
-            lastFF = now
-            pcall(function() tool:Activate() end)
-            -- Gọi remote bắn (nếu tìm được)
-            for _, r in ipairs(attackRemotes) do
-                if r.obj and r.obj.Parent then
-                    pcall(function()
-                        if r.isFunc then r.obj:InvokeServer()
-                        else r.obj:FireServer() end
-                    end)
-                end
-            end
-        end
-    end
-end)
-
--- ==================================================================
--- ============ ANTI-KICK + ANTI-BAN ================================
--- ==================================================================
-local antiKickOn = false
-local antiBanOn  = false
-local SAFE_JOBID   = game.JobId
-local SAFE_PLACEID = game.PlaceId
-local lastRejoin   = 0
-
-local kickHooked = false
-local function setupKickHook()
-    if kickHooked then return end
-    if not (getrawmetatable and setreadonly and newcclosure and getnamecallmethod) then
-        stLbl.Text="[!] Executor không hỗ trợ anti-kick"
-        stLbl.TextColor3=YEL
-        return
-    end
-    local okHook = pcall(function()
-        local mt = getrawmetatable(game)
-        local oldNC = mt.__namecall
-        setreadonly(mt, false)
-        mt.__namecall = newcclosure(function(self, ...)
-            if antiKickOn and self == pl and getnamecallmethod() == "Kick" then
-                return
-            end
-            return oldNC(self, ...)
-        end)
-        setreadonly(mt, true)
-    end)
-    kickHooked = okHook
-end
-
-pl.AncestryChanged:Connect(function(_, parent)
-    if parent then return end
-    if not antiBanOn then return end
-    if tick() - lastRejoin < 10 then return end
-    if SAFE_JOBID == "" or SAFE_PLACEID == 0 then return end
-    lastRejoin = tick()
-    task.spawn(function()
-        pcall(function()
-            TS:TeleportToPlaceInstance(SAFE_PLACEID, SAFE_JOBID, pl)
-        end)
-    end)
-end)
-
 -- ============ POPULATE UI ============
 mkSec(pages["MOVE"],"// SPEED")
 mkSli(pages["MOVE"],"Walk Speed",16,500,16,function(v) stt.ws=v end)
@@ -1429,63 +886,14 @@ mkTog(pages["COMBAT"],"AUTO ATTACK",false,function(on)
     if on then aaLastTp = 0 end
 end)
 
-mkSec(pages["COMBAT"],"// WEAPON BUFF")
-mkTog(pages["COMBAT"],"FAST FIRE [FIX]",false,function(on)
-    extras.fastFire = on
-    if on then
-        stLbl.Text="[ OK ] Fast Fire ON (20/s)"
-        stLbl.TextColor3=G
-    end
-end)
-mkTog(pages["COMBAT"],"NO RELOAD [FIX]",false,function(on)
-    extras.noReload = on
-    if on then
-        stLbl.Text="[ OK ] No Reload ON"
-        stLbl.TextColor3=G
-    end
-end)
-
-mkSec(pages["COMBAT"],"// HITBOX (chạy nền)")
-mkTog(pages["COMBAT"],"HITBOX EXPAND [FIX]",true,function(on) hitboxOn = on end)
-
-mkSec(pages["COMBAT"],"// FOV CIRCLE")
-mkTog(pages["COMBAT"],"BẬT VÒNG FOV",false,function(on) fovCircle.enabled = on end)
-mkSli(pages["COMBAT"],"FOV Size",50,400,150,function(v) fovCircle.radius = v end)
-
-mkSec(pages["COMBAT"],"// AIMLOCK [FIX - GUARD MODE]")
-mkTog(pages["COMBAT"],"AIMLOCK (chỉ địch hợp lệ)",false,function(on)
-    aim.enabled = on
-    aim.smooth = 1
-    if on then
-        local role = getPlayerRole(pl)
-        local hint = ""
-        if role == "guard" then hint = " (chỉ tù vi phạm)"
-        elseif role == "prisoner" or role == "criminal" then hint = " (chỉ cảnh sát)" end
-        stLbl.Text = "[ OK ] Aimlock ON"..hint
-        stLbl.TextColor3 = G
-    else
-        stLbl.Text = "[ OK ] Aimlock: OFF"
-        stLbl.TextColor3 = DIM
-    end
-end)
-mkTog(pages["COMBAT"],"SILENT AIM (đạn 100% trúng)",true,function(on) aim.silent = on end)
-
 mkSec(pages["PLAYER"],"// PERFORMANCE")
 mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on setFPS(on) end)
 mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on setMapBright(on) end)
 mkSec(pages["PLAYER"],"// SURVIVAL")
 mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclip(on) end)
-mkTog(pages["PLAYER"],"ANTI-KICK",false,function(on)
-    antiKickOn = on
-    if on then setupKickHook() end
-end)
-mkTog(pages["PLAYER"],"ANTI-BAN (auto rejoin)",false,function(on) antiBanOn = on end)
 mkSec(pages["PLAYER"],"// CAMERA")
 mkSli(pages["PLAYER"],"FOV",70,120,70,function(v) cam.FieldOfView=v end)
 mkSec(pages["PLAYER"],"// UTILITIES")
-mkBtn(pages["PLAYER"],"RESET CHARACTER",function()
-    local c=pl.Character if c then local h=c:FindFirstChildOfClass("Humanoid") if h then h.Health=0 end end
-end)
 mkBtn(pages["PLAYER"],"REJOIN SERVER",function()
     pcall(function() TS:TeleportToPlaceInstance(game.PlaceId,game.JobId,pl) end)
 end)
@@ -1692,7 +1100,6 @@ local pRow=makeCard("PLAYER",YEL)
 infoRefs.name=pRow("NAME",YEL)
 infoRefs.hp=pRow("HEALTH",G)
 infoRefs.pos=pRow("POSITION",YEL)
-infoRefs.role=pRow("ROLE",CY) -- [FIX] hiển thị role
 local srvRow=makeCard("SERVER",G3)
 infoRefs.game=srvRow("GAME",G3)
 infoRefs.place=srvRow("PLACE ID",G3)
@@ -1731,7 +1138,6 @@ task.spawn(function()
                 local u=math.floor(tick()-stT)
                 infoRefs.uptime.Text=string.format("%dm %ds",math.floor(u/60),u%60)
                 infoRefs.name.Text=pl.Name
-                infoRefs.role.Text=getPlayerRole(pl):upper() -- [FIX]
                 local c=pl.Character
                 if c then
                     local h=c:FindFirstChildOfClass("Humanoid")
@@ -1746,7 +1152,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v12.5-FIX"
+                infoRefs.ver.Text="v12.6-LITE"
                 local a={}
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
@@ -1757,14 +1163,6 @@ task.spawn(function()
                 if tg.mapBright then table.insert(a,"BRIGHT") end
                 if tg.fps then table.insert(a,"FPS+") end
                 if aa.enabled then table.insert(a,"AA") end
-                if hitboxOn then table.insert(a,"HITBOX") end
-                if aim.enabled then table.insert(a,"AIM") end
-                if aim.silent then table.insert(a,"SILENT") end
-                if fovCircle.enabled then table.insert(a,"FOV") end
-                if extras.fastFire then table.insert(a,"FF") end
-                if extras.noReload then table.insert(a,"NR") end
-                if antiKickOn then table.insert(a,"AK") end
-                if antiBanOn then table.insert(a,"AB") end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
         end
@@ -1942,13 +1340,11 @@ RS.RenderStepped:Connect(function(dt)
     end
 end)
 
--- ==================================================================
--- ============ [FIX] SPEED - Dùng BodyVelocity an toàn =============
--- ==================================================================
+-- ============ SPEED ============
 local speedBV = nil
 local function ensureSpeedBV(hr)
     if speedBV and speedBV.Parent == hr then return speedBV end
-    if speedBV then pcall(function() speedBV:Destroy() end) end -- [FIX] destroy cũ
+    if speedBV then pcall(function() speedBV:Destroy() end) end
     speedBV = Instance.new("BodyVelocity")
     speedBV.Name = "NekoSpeed"
     speedBV.MaxForce = Vector3.new(1e5, 0, 1e5)
@@ -1964,7 +1360,6 @@ RS.Heartbeat:Connect(function(dt)
     local hr = c:FindFirstChild("HumanoidRootPart")
     if not h or not hr or h.Health <= 0 then return end
 
-    -- [FIX] Chỉ set khi cần, tránh spam
     if h.WalkSpeed ~= 16 then h.WalkSpeed = 16 end
 
     if stt.ws > 16 then
@@ -2018,14 +1413,7 @@ task.spawn(function()
     end
 end)
 
--- [FIX] Thông báo role của mình khi load
-task.spawn(function()
-    task.wait(3)
-    local role = getPlayerRole(pl)
-    print("[HACKER NEKO v12.5-FIX] loaded. Role: "..role)
-    stLbl.Text = "[ OK ] Role: "..role:upper()
-    stLbl.TextColor3 = G
-end)
+print("[HACKER NEKO v12.6-LITE] loaded")
 
 end)
 
