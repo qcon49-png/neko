@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v12.4 ===================================
+-- ============ HACKER NEKO v12.4 (LIFE PRISON FIX) =================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -46,18 +46,18 @@ local stt={ws=16,jp=50}
 local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
     noclip=false,mapBright=false,fps=false,infJump=false}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
-local hitboxOn = true        -- chạy nền, mặc định BẬT
+local hitboxOn = true
 local hitboxRange = 15
 
 local fovCircle = {
-    enabled = false,          -- mặc định TẮT (bật/tắt được)
+    enabled = false,
     radius = 150,
     drawing = nil,
 }
 
 local aim = {
     enabled = false,
-    smooth = 0.35,
+    smooth = 1,
     target = nil,
 }
 local teleportTo
@@ -557,6 +557,9 @@ local function setMapBright(on)
     end
 end
 
+-- ==================================================================
+-- ============ [FIX 1] TELEPORT - CHỐNG ANTI-TELE ==================
+-- ==================================================================
 local teleportBusy = false
 teleportTo = function(targetPos, opts)
     opts = opts or {}
@@ -567,33 +570,24 @@ teleportTo = function(targetPos, opts)
     if not hr then return false end
 
     teleportBusy = true
-    local target = CFrame.new(targetPos)
-
-    pcall(function() hr:SetNetworkOwner(pl) end)
-    hr.AssemblyLinearVelocity = Vector3.zero
-    hr.AssemblyAngularVelocity = Vector3.zero
-
-    local wasAnchored = hr.Anchored
-    hr.Anchored = true
-    hr.CFrame = target
+    local startPos = hr.Position
 
     task.spawn(function()
-        for i = 1, 5 do
+        local dist = (targetPos - startPos).Magnitude
+        local steps = math.clamp(math.ceil(dist / 40), 1, 15)
+        local stepDelay = 0.035
+        for i = 1, steps do
             if not hr or not hr.Parent then teleportBusy = false return end
-            hr.CFrame = target
+            local alpha = i / steps
+            local pos = startPos:Lerp(targetPos, alpha)
+            hr.CFrame = CFrame.new(pos)
             hr.AssemblyLinearVelocity = Vector3.zero
             hr.AssemblyAngularVelocity = Vector3.zero
-            task.wait(0.025)
+            task.wait(stepDelay)
         end
         if hr and hr.Parent then
-            hr.Anchored = wasAnchored
-            if (hr.Position - targetPos).Magnitude > 5 then
-                task.wait(0.05)
-                hr.CFrame = target
-                hr.AssemblyLinearVelocity = Vector3.zero
-                task.wait(0.05)
-                hr.CFrame = target
-            end
+            hr.CFrame = CFrame.new(targetPos)
+            hr.AssemblyLinearVelocity = Vector3.zero
         end
         teleportBusy = false
     end)
@@ -623,6 +617,83 @@ RS.Heartbeat:Connect(function()
     if not hr then return end
     if hr.AssemblyLinearVelocity.Y < -75 then
         fallProtectUntil = tick() + 2
+    end
+end)
+
+-- ==================================================================
+-- ============ [FIX 4] GODMODE - KHÔNG CHẾT =======================
+-- ==================================================================
+local godmodeOn = false
+local godHooked = false
+
+local function setupGodHook()
+    if godHooked then return end
+    if not (getrawmetatable and setreadonly and newcclosure and hookmetamethod) then return end
+    godHooked = true
+    pcall(function()
+        local mt = getrawmetatable(game)
+        local oldIndex = mt.__index
+        local oldNewIndex = mt.__newindex
+        local oldNamecall = mt.__namecall
+        setreadonly(mt, false)
+
+        mt.__index = newcclosure(function(self, key)
+            if godmodeOn and typeof(self) == "Instance" and self:IsA("Humanoid")
+               and self.Parent == pl.Character and key == "Health" then
+                return oldIndex(self, "MaxHealth") or 100
+            end
+            return oldIndex(self, key)
+        end)
+
+        mt.__newindex = newcclosure(function(self, key, value)
+            if godmodeOn and typeof(self) == "Instance" and self:IsA("Humanoid")
+               and self.Parent == pl.Character and key == "Health" then
+                return
+            end
+            return oldNewIndex(self, key, value)
+        end)
+
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if godmodeOn and self == pl.Character then
+                if method == "BreakJoints" or method == "TakeDamage" then
+                    return
+                end
+            end
+            return oldNamecall(self, ...)
+        end)
+
+        setreadonly(mt, true)
+    end)
+end
+
+local function setGodmode(on)
+    godmodeOn = on
+    if on then
+        setupGodHook()
+        local c = pl.Character
+        if c then
+            local h = c:FindFirstChildOfClass("Humanoid")
+            if h then
+                pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end)
+                h.Health = h.MaxHealth
+            end
+        end
+    else
+        local c = pl.Character
+        if c then
+            local h = c:FindFirstChildOfClass("Humanoid")
+            if h then pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Dead, true) end) end
+        end
+    end
+end
+
+RS.Heartbeat:Connect(function()
+    if not godmodeOn then return end
+    local c = pl.Character
+    local h = c and c:FindFirstChildOfClass("Humanoid")
+    if h and h.Health > 0 and h.Health < h.MaxHealth then
+        h.Health = h.MaxHealth
     end
 end)
 
@@ -658,6 +729,9 @@ RS.Heartbeat:Connect(function(dt)
     end
 end)
 
+-- ============ [FIX BUG] FORWARD DECLARE setNoclip ============
+local setNoclip
+
 local function onCharSpawn(char)
     local hr = char:WaitForChild("HumanoidRootPart", 10)
     local h = char:WaitForChild("Humanoid", 10)
@@ -668,7 +742,7 @@ local function onCharSpawn(char)
     setupNoFallDmg(char)
     if tg.noclip then
         task.wait(0.2)
-        setNoclip(true)
+        if setNoclip then setNoclip(true) end
     end
 end
 pl.CharacterAdded:Connect(onCharSpawn)
@@ -733,7 +807,6 @@ local function fireAttack()
     end
 end
 
--- ============ AUTO ATTACK (KHÔI PHỤC NHƯ CŨ) ============
 local function aaApplySpeed()
     local c=pl.Character if not c then return end
     for _,v in ipairs(c:GetDescendants()) do
@@ -839,37 +912,35 @@ local function isEnemyForAim(p)
     local myRole = getPlayerRole(pl)
     local theirRole = getPlayerRole(p)
 
-    -- Life Prison logic
     if myRole == "guard" then
-        -- Cảnh sát: aim tù nhân + kẻ vượt ngục
         return theirRole == "prisoner" or theirRole == "criminal"
     elseif myRole == "prisoner" or myRole == "criminal" then
-        -- Tù nhân / vượt ngục: aim cảnh sát
         return theirRole == "guard"
     end
 
-    -- Fallback: khác team
     if pl.Team and p.Team and pl.Team == p.Team then
         return false
     end
     return true
 end
 
--- Priority: guard ưu tiên criminal/escaped
 local function getAimPriority(p)
     local theirRole = getPlayerRole(p)
-    if theirRole == "criminal" then return 1  -- ưu tiên cao nhất
+    if theirRole == "criminal" then return 1
     elseif theirRole == "prisoner" then return 2
     elseif theirRole == "guard" then return 2
     end
     return 3
 end
 
--- ============ AIMLOCK (chỉ trong FOV circle) ============
+-- ==================================================================
+-- ============ [FIX 3] FIND AIM TARGET - ƯU TIÊN HEAD =============
+-- ==================================================================
 local function findAimTarget()
     local camPos = cam.CFrame.Position
     local camLook = cam.CFrame.LookVector
     local bestTarget, bestScore = nil, math.huge
+
     for _, p in ipairs(P:GetPlayers()) do
         if isEnemyForAim(p) then
             local head = p.Character:FindFirstChild("Head")
@@ -880,10 +951,11 @@ local function findAimTarget()
                     local dot = math.clamp(camLook.Unit:Dot(dir.Unit), -1, 1)
                     local angle = math.deg(math.acos(dot))
                     local priority = getAimPriority(p)
-                    local score = priority * 1000 + dist + angle * 3
+                    -- Ưu tiên cực mạnh theo góc nhìn
+                    local score = angle * 10 + priority * 200 + dist * 0.1
                     if score < bestScore then
                         bestScore = score
-                        bestTarget = {part=head, player=p}
+                        bestTarget = {part = head, player = p}
                     end
                 end
             end
@@ -905,6 +977,9 @@ local function isFPSMode()
     return false
 end
 
+-- ==================================================================
+-- ============ [FIX 3] AIMLOCK SNAP + BÙ PING =====================
+-- ==================================================================
 pcall(function()
     RS:UnbindFromRenderStep("NekoAimlock")
 end)
@@ -915,32 +990,32 @@ RS:BindToRenderStep("NekoAimlock", Enum.RenderPriority.Camera.Value + 1, functio
     end
 
     local found = findAimTarget()
-    if not found then
+    if not found or not found.part or not found.part.Parent then
         aim.target = nil
         return
     end
     aim.target = found.player
 
-    local part = found.part
-    if not part or not part.Parent then return end
+    local head = found.part
+    local char = found.player.Character
+    if not char then return end
+    local hr = char:FindFirstChild("HumanoidRootPart")
 
     local camPos = cam.CFrame.Position
-    local targetPos = part.Position
-    local hr = found.player.Character and found.player.Character:FindFirstChild("HumanoidRootPart")
+    local aimPos = head.Position
+
+    -- Bù ping + frame delay cho HITSCAN
     if hr then
-        targetPos = part.Position + hr.AssemblyLinearVelocity * 0.05
+        local ping = pl:GetNetworkPing()
+        local comp = ping * 1.5 + 0.03
+        aimPos = aimPos + hr.AssemblyLinearVelocity * comp
     end
 
-    local desiredCF = CFrame.lookAt(camPos, targetPos)
-
-    local smooth = aim.smooth
-    if isFPSMode() then
-        smooth = math.max(smooth, 0.5)
-    end
-    cam.CFrame = cam.CFrame:Lerp(desiredCF, math.clamp(smooth, 0.01, 1))
+    -- Snap thẳng, KHÔNG lerp
+    cam.CFrame = CFrame.lookAt(camPos, aimPos)
 end)
 
--- ============ FOV CIRCLE RENDER (1 màu xanh lá, không rainbow) ============
+-- ============ FOV CIRCLE RENDER ============
 local drawingOK = (Drawing ~= nil and Drawing.new ~= nil)
 if drawingOK then
     pcall(function()
@@ -1011,7 +1086,6 @@ local function buildESP(char)
     distLbl.Font=Enum.Font.Code distLbl.TextSize=14 distLbl.TextXAlignment=Enum.TextXAlignment.Center
     distLbl.Visible=tg.espDist
 
-    -- HP BAR NHỎ (6x40)
     local hpBB=Instance.new("BillboardGui",fold)
     hpBB.Adornee=hr hpBB.Size=UDim2.new(0,6,0,40) hpBB.StudsOffset=Vector3.new(1.4,0.3,0)
     hpBB.AlwaysOnTop=true hpBB.LightInfluence=0 hpBB.MaxDistance=5000
@@ -1108,7 +1182,7 @@ local function noclipApply(part)
     if noclipSaved[part] == nil then noclipSaved[part] = part.CanCollide end
     part.CanCollide = false
 end
-function setNoclip(on)
+setNoclip = function(on)
     if noclipConn then noclipConn:Disconnect() noclipConn = nil end
     local c = pl.Character
     if on then
@@ -1190,9 +1264,13 @@ mkSli(pages["COMBAT"],"FOV Size",50,400,150,function(v) fovCircle.radius = v end
 mkSec(pages["COMBAT"],"// AIMLOCK (chỉ trong FOV)")
 mkTog(pages["COMBAT"],"AIMLOCK (Head)",false,function(on)
     aim.enabled = on
+    aim.smooth = 1
     if on then
         stLbl.Text = "[ OK ] Aimlock: ON"
         stLbl.TextColor3 = G
+    else
+        stLbl.Text = "[ OK ] Aimlock: OFF"
+        stLbl.TextColor3 = DIM
     end
 end)
 
@@ -1201,6 +1279,7 @@ mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on setFPS(on) end)
 mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on setMapBright(on) end)
 mkSec(pages["PLAYER"],"// SURVIVAL")
 mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclip(on) end)
+mkTog(pages["PLAYER"],"GODMODE",false,function(on) setGodmode(on) end)
 mkSec(pages["PLAYER"],"// CAMERA")
 mkSli(pages["PLAYER"],"FOV",70,120,70,function(v) cam.FieldOfView=v end)
 mkSec(pages["PLAYER"],"// UTILITIES")
@@ -1465,7 +1544,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v12.4"
+                infoRefs.ver.Text="v12.4-FIX"
                 local a={}
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
@@ -1479,6 +1558,7 @@ task.spawn(function()
                 if hitboxOn then table.insert(a,"HITBOX") end
                 if aim.enabled then table.insert(a,"AIM") end
                 if fovCircle.enabled then table.insert(a,"FOV") end
+                if godmodeOn then table.insert(a,"GOD") end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
         end
@@ -1656,22 +1736,45 @@ RS.RenderStepped:Connect(function(dt)
     end
 end)
 
+-- ==================================================================
+-- ============ [FIX 2] SPEED - CHỐNG ANTI-SPEED ====================
+-- ==================================================================
+local speedBV = nil
+local function ensureSpeedBV(hr)
+    if speedBV and speedBV.Parent then return speedBV end
+    speedBV = Instance.new("BodyVelocity")
+    speedBV.Name = "NekoSpeed"
+    speedBV.MaxForce = Vector3.new(1e5, 0, 1e5)
+    speedBV.P = 1e4
+    speedBV.Parent = hr
+    return speedBV
+end
+
 RS.Heartbeat:Connect(function(dt)
-    local c=pl.Character
-    if c then
-        local h=c:FindFirstChildOfClass("Humanoid")
-        local hr=c:FindFirstChild("HumanoidRootPart")
-        if h and hr and h.Health>0 then
-            if stt.ws>16 then
-                h.WalkSpeed=stt.ws
-                if h.MoveDirection.Magnitude>.1 then
-                    local v=h.MoveDirection.Unit*stt.ws
-                    hr.AssemblyLinearVelocity=Vector3.new(v.X,hr.AssemblyLinearVelocity.Y,v.Z)
-                end
-            else h.WalkSpeed=16 end
-            if stt.jp>50 then h.UseJumpPower=true h.JumpPower=stt.jp end
+    local c = pl.Character
+    if not c then return end
+    local h = c:FindFirstChildOfClass("Humanoid")
+    local hr = c:FindFirstChild("HumanoidRootPart")
+    if not h or not hr or h.Health <= 0 then return end
+
+    -- Luôn giữ WalkSpeed = 16 để không bị flag
+    if h.WalkSpeed ~= 16 then h.WalkSpeed = 16 end
+
+    if stt.ws > 16 then
+        local bv = ensureSpeedBV(hr)
+        local md = h.MoveDirection
+        if md.Magnitude > 0.1 then
+            bv.Velocity = md.Unit * stt.ws
+        else
+            bv.Velocity = Vector3.zero
+        end
+    else
+        if speedBV and speedBV.Parent then
+            speedBV.Velocity = Vector3.zero
         end
     end
+
+    if stt.jp > 50 then h.UseJumpPower = true h.JumpPower = stt.jp end
 end)
 
 UIS.JumpRequest:Connect(function()
@@ -1708,7 +1811,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v12.4] loaded")
+print("[HACKER NEKO v12.4-FIX] loaded")
 
 end)
 
