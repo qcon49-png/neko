@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v11.1 - FULLY OPTIMIZED =================
+-- ============ HACKER NEKO v11.3 — SMOOTH EDITION ==================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -13,14 +13,6 @@ local ST=game:GetService("Stats")
 local HS=game:GetService("HttpService")
 local pl=P.LocalPlayer
 local cam=workspace.CurrentCamera
-
-local _vim
-local function getVIM()
-    if _vim then return _vim end
-    local okk,v=pcall(function() return game:GetService("VirtualUser") end)
-    _vim=okk and v or nil
-    return _vim
-end
 
 local G   = Color3.fromRGB(0,255,120)
 local G2  = Color3.fromRGB(0,180,80)
@@ -49,12 +41,10 @@ sg.Parent=gp
 
 local ef=Instance.new("Folder",gp) ef.Name="NekoESP"
 local epf=Instance.new("Folder",ef) epf.Name="Players"
-local enf=Instance.new("Folder",ef) enf.Name="NPC"
 
-local stt={ws=16,hh=10,tph=3,jp=50,fov=70}
-local tg={hover=false,espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
-    espNPC=false,espItem=false,noclip=false,autoPick=false,mapBright=false,
-    fps=false,infJump=false,aimE=false,aimA=false,antiAFK=false,trail=false}
+local stt={ws=16,jp=50}
+local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
+    noclip=false,mapBright=false,fps=false,infJump=false}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
 local teleportTo
 
@@ -119,7 +109,7 @@ Instance.new("UICorner",main).CornerRadius=UDim.new(0,4)
 local stk=Instance.new("UIStroke",main) stk.Color=G stk.Thickness=1.5
 local stkGlow=Instance.new("UIStroke",main) stkGlow.Color=G stkGlow.Thickness=5 stkGlow.Transparency=0.85
 
--- RAIN (LIGHT - 4 cols, 18 lines, throttled)
+-- RAIN
 local rainFrame=Instance.new("Frame",main)
 rainFrame.Size=UDim2.new(1,-4,1,-4) rainFrame.Position=UDim2.new(0,2,0,2)
 rainFrame.BackgroundTransparency=1 rainFrame.ClipsDescendants=true rainFrame.ZIndex=1
@@ -221,55 +211,6 @@ local function closeDlg()
 end
 dlgOverlay.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then closeDlg() end
-end)
-
--- TEXT DIALOG
-local txtOverlay=Instance.new("Frame",sg)
-txtOverlay.Size=UDim2.new(1,0,1,0) txtOverlay.BackgroundColor3=Color3.new(0,0,0)
-txtOverlay.BackgroundTransparency=.6 txtOverlay.BorderSizePixel=0 txtOverlay.Visible=false txtOverlay.ZIndex=910
-local txtDlg=Instance.new("Frame",sg)
-txtDlg.Size=UDim2.new(0,320,0,180) txtDlg.Position=UDim2.new(.5,-160,.5,-90)
-txtDlg.BackgroundColor3=BG txtDlg.BorderSizePixel=0 txtDlg.Visible=false txtDlg.Active=true txtDlg.ZIndex=911
-Instance.new("UICorner",txtDlg).CornerRadius=UDim.new(0,4)
-local txtStk=Instance.new("UIStroke",txtDlg) txtStk.Color=CY txtStk.Thickness=1.5
-local txtTitle=Instance.new("TextLabel",txtDlg)
-txtTitle.Size=UDim2.new(1,-20,0,26) txtTitle.Position=UDim2.new(0,14,0,12)
-txtTitle.BackgroundTransparency=1 txtTitle.Text="> RENAME" txtTitle.Font=Enum.Font.Code
-txtTitle.TextSize=12 txtTitle.TextColor3=CY txtTitle.TextXAlignment=Enum.TextXAlignment.Left txtTitle.ZIndex=912
-local txtBox=Instance.new("TextBox",txtDlg)
-txtBox.Size=UDim2.new(1,-28,0,44) txtBox.Position=UDim2.new(0,14,0,46)
-txtBox.BackgroundColor3=Color3.fromRGB(0,25,15) txtBox.BorderSizePixel=0 txtBox.Text=""
-txtBox.PlaceholderText="new name" txtBox.PlaceholderColor3=DIM
-txtBox.Font=Enum.Font.Code txtBox.TextSize=14 txtBox.TextColor3=G
-txtBox.ClearTextOnFocus=false txtBox.Active=true txtBox.ZIndex=912
-Instance.new("UICorner",txtBox).CornerRadius=UDim.new(0,3)
-local txtStk2=Instance.new("UIStroke",txtBox) txtStk2.Color=G txtStk2.Thickness=1
-local txtCancel=Instance.new("TextButton",txtDlg)
-txtCancel.Size=UDim2.new(0,130,0,36) txtCancel.Position=UDim2.new(0,14,1,-50)
-txtCancel.BackgroundColor3=BG2 txtCancel.BorderSizePixel=0 txtCancel.Text="> CANCEL"
-txtCancel.Font=Enum.Font.Code txtCancel.TextSize=12 txtCancel.TextColor3=RED txtCancel.AutoButtonColor=false txtCancel.ZIndex=912
-Instance.new("UICorner",txtCancel).CornerRadius=UDim.new(0,3)
-local txtSave=Instance.new("TextButton",txtDlg)
-txtSave.Size=UDim2.new(0,130,0,36) txtSave.Position=UDim2.new(1,-144,1,-50)
-txtSave.BackgroundColor3=G txtSave.BorderSizePixel=0 txtSave.Text="> SAVE"
-txtSave.Font=Enum.Font.Code txtSave.TextSize=12 txtSave.TextColor3=Color3.new(0,0,0) txtSave.AutoButtonColor=false txtSave.ZIndex=912
-Instance.new("UICorner",txtSave).CornerRadius=UDim.new(0,3)
-local txtCb=nil
-local function closeTxt() txtDlg.Visible=false txtOverlay.Visible=false txtCb=nil end
-local function openTxt(t,default,cb)
-    txtTitle.Text="> "..t txtBox.Text=default txtCb=cb
-    txtDlg.Visible=true txtOverlay.Visible=true
-    task.wait() pcall(function() txtBox:CaptureFocus() end)
-end
-txtOverlay.InputBegan:Connect(function(i)
-    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then closeTxt() end
-end)
-txtCancel.MouseButton1Click:Connect(closeTxt)
-txtSave.MouseButton1Click:Connect(function()
-    local v=txtBox.Text
-    if v=="" then v="---" end
-    if txtCb then pcall(txtCb,v) end
-    closeTxt()
 end)
 
 -- TABS
@@ -421,83 +362,261 @@ local function mkBtn(parent,name,cb)
     return b
 end
 
--- ============ FPS BOOST ============
-local fpsParts={} local fpsEffects={}
-local fpsGen=0
-local function killOne(o)
-    if not o or not o.Parent then return end
-    local cls=o.ClassName
-    if cls=="ParticleEmitter" or cls=="Trail" or cls=="Beam" then
-        if o.Enabled then table.insert(fpsEffects,{o,"Enabled",true}) o.Enabled=false end
-    elseif cls=="PointLight" or cls=="SpotLight" or cls=="SurfaceLight" then
-        if o.Enabled then table.insert(fpsEffects,{o,"Enabled",true}) o.Enabled=false end
-    elseif cls=="BasePart" or cls=="MeshPart" or cls=="UnionOperation" then
-        pcall(function() if o.CastShadow then table.insert(fpsParts,o) o.CastShadow=false end end)
-    end
-end
-local function restoreFPS()
-    for i=#fpsEffects,1,-1 do
-        local e=fpsEffects[i]
-        pcall(function() if e[1] and e[1].Parent then e[1][e[2]]=e[3] end end)
-    end
-    fpsEffects={}
-    for i=1,#fpsParts do
-        local p=fpsParts[i]
-        pcall(function() if p and p.Parent then p.CastShadow=true end end)
-    end
-    fpsParts={}
-end
-local function tFPS(on)
-    fpsGen=fpsGen+1
-    local myGen=fpsGen
-    if on then
-        pcall(function()
-            L.Brightness=2 L.ClockTime=14
-            L.GlobalShadows=false
-            L.EnvironmentDiffuseScale=0
-            L.EnvironmentSpecularScale=0
-            L.ShadowSoftness=0
-        end)
-        pcall(function() if setfpscap then setfpscap(144) end end)
-        pcall(function()
-            local t=workspace:FindFirstChildOfClass("Terrain")
-            if t then
-                t.WaterWaveSize=0
-                t.WaterReflectance=0
-                t.WaterTransparency=1
+-- ==================================================================
+-- ============ FPS BOOST — INSTANT + PERSISTENT + RESTORABLE =======
+-- ==================================================================
+local fpsSaved = {
+    active = false,
+    gen = 0,
+    lighting = {},
+    qualityLevel = nil,
+    meshDetail = nil,
+    parts = {},       -- [part] = true (đã set CastShadow=false)
+    effects = {},     -- [effect] = true (đã set Enabled=false)
+    postFx = {},      -- [effect] = true (post-processing killed)
+    atmos = {},       -- [atmos] = originalDensity
+    terrain = {},
+    conns = {},
+}
+
+local function fpsKill(o)
+    if not fpsSaved.active then return end
+    local ok2 = pcall(function()
+        if o:IsA("BasePart") or o:IsA("MeshPart") or o:IsA("UnionOperation") then
+            if o.CastShadow then
+                if not fpsSaved.parts[o] then fpsSaved.parts[o] = true end
+                o.CastShadow = false
             end
-        end)
-        task.spawn(function()
-            local all=workspace:GetDescendants()
-            for i=1,#all do
-                if fpsGen~=myGen then return end
-                if not tg.fps then return end
-                pcall(killOne,all[i])
-                if i%40==0 then task.wait() end
+        elseif o:IsA("ParticleEmitter") or o:IsA("Trail") or o:IsA("Beam")
+            or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles")
+            or o:IsA("PointLight") or o:IsA("SpotLight") or o:IsA("SurfaceLight") then
+            if o.Enabled then
+                if not fpsSaved.effects[o] then fpsSaved.effects[o] = true end
+                o.Enabled = false
             end
-        end)
-    else
-        pcall(function() if setfpscap then setfpscap(240) end end)
-        restoreFPS()
-        pcall(function()
-            L.GlobalShadows=true
-            L.EnvironmentDiffuseScale=1
-            L.EnvironmentSpecularScale=1
-        end)
-    end
+        end
+    end)
 end
 
--- ============ MAP BRIGHT ============
-local savedLighting=nil
-local function tMapBright(on)
-    if on then
-        if not savedLighting then
-            savedLighting={
-                Brightness=L.Brightness, ClockTime=L.ClockTime, Ambient=L.Ambient,
-                OutdoorAmbient=L.OutdoorAmbient, FogEnd=L.FogEnd, FogStart=L.FogStart,
-                GlobalShadows=L.GlobalShadows, ExposureCompensation=L.ExposureCompensation,
-            }
+local function enableFPS()
+    -- reset state sạch
+    if fpsSaved.active then return end
+    fpsSaved.active = true
+    fpsSaved.gen = fpsSaved.gen + 1
+    local myGen = fpsSaved.gen
+    fpsSaved.parts = {}
+    fpsSaved.effects = {}
+    fpsSaved.postFx = {}
+    fpsSaved.atmos = {}
+    fpsSaved.conns = {}
+
+    -- 1. INSTANT: QualityLevel xuống thấp nhất
+    pcall(function()
+        if settings and settings().Rendering then
+            fpsSaved.qualityLevel = settings().Rendering.QualityLevel
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
         end
+    end)
+    pcall(function()
+        if settings and settings().Rendering then
+            fpsSaved.meshDetail = settings().Rendering.MeshPartDetailLevel
+            settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+        end
+    end)
+
+    -- 2. INSTANT: setfpscap cao
+    pcall(function() if setfpscap then setfpscap(999) end end)
+
+    -- 3. INSTANT: Lighting snapshot + apply
+    fpsSaved.lighting = {
+        Brightness = L.Brightness,
+        ClockTime = L.ClockTime,
+        Ambient = L.Ambient,
+        OutdoorAmbient = L.OutdoorAmbient,
+        GlobalShadows = L.GlobalShadows,
+        EnvironmentDiffuseScale = L.EnvironmentDiffuseScale,
+        EnvironmentSpecularScale = L.EnvironmentSpecularScale,
+        ShadowSoftness = L.ShadowSoftness,
+        FogEnd = L.FogEnd,
+        FogStart = L.FogStart,
+        ExposureCompensation = L.ExposureCompensation,
+    }
+    pcall(function()
+        L.GlobalShadows = false
+        L.EnvironmentDiffuseScale = 0
+        L.EnvironmentSpecularScale = 0
+        L.ShadowSoftness = 0
+        L.FogEnd = 100000
+        L.FogStart = 100000
+    end)
+
+    -- 4. INSTANT: Post-processing
+    for _, v in ipairs(L:GetChildren()) do
+        pcall(function()
+            if v:IsA("PostEffect") and v.Enabled then
+                fpsSaved.postFx[v] = true
+                v.Enabled = false
+            elseif v:IsA("Atmosphere") then
+                fpsSaved.atmos[v] = v.Density
+                v.Density = 0
+            end
+        end)
+    end
+
+    -- 5. INSTANT: Terrain
+    pcall(function()
+        local t = workspace:FindFirstChildOfClass("Terrain")
+        if t then
+            fpsSaved.terrain = {
+                WaterWaveSize = t.WaterWaveSize,
+                WaterReflectance = t.WaterReflectance,
+                WaterTransparency = t.WaterTransparency,
+            }
+            t.WaterWaveSize = 0
+            t.WaterReflectance = 0
+            t.WaterTransparency = 1
+            pcall(function() t.Decoration = false end)
+        end
+    end)
+
+    -- 6. Background: iterate all descendants (chunked, không block)
+    task.spawn(function()
+        local all = workspace:GetDescendants()
+        for i = 1, #all do
+            if fpsSaved.gen ~= myGen or not fpsSaved.active then return end
+            fpsKill(all[i])
+            if i % 200 == 0 then task.wait() end
+        end
+        -- lighting descendants
+        local ld = L:GetDescendants()
+        for i = 1, #ld do
+            if fpsSaved.gen ~= myGen or not fpsSaved.active then return end
+            fpsKill(ld[i])
+        end
+    end)
+
+    -- 7. Persistent: kill new effects as they spawn
+    table.insert(fpsSaved.conns,
+        workspace.DescendantAdded:Connect(function(o)
+            if fpsSaved.active then fpsKill(o) end
+        end)
+    )
+    table.insert(fpsSaved.conns,
+        L.DescendantAdded:Connect(function(o)
+            if not fpsSaved.active then return end
+            if o:IsA("PostEffect") then
+                pcall(function()
+                    if o.Enabled then
+                        if not fpsSaved.postFx[o] then fpsSaved.postFx[o] = true end
+                        o.Enabled = false
+                    end
+                end)
+            elseif o:IsA("Atmosphere") then
+                pcall(function()
+                    if not fpsSaved.atmos[o] then fpsSaved.atmos[o] = o.Density end
+                    o.Density = 0
+                end)
+            else
+                fpsKill(o)
+            end
+        end)
+    )
+end
+
+local function disableFPS()
+    if not fpsSaved.active then return end
+    fpsSaved.active = false
+    fpsSaved.gen = fpsSaved.gen + 1
+
+    -- Disconnect all listeners
+    for _, c in ipairs(fpsSaved.conns) do pcall(function() c:Disconnect() end) end
+    fpsSaved.conns = {}
+
+    -- Restore Lighting
+    pcall(function()
+        for k, v in pairs(fpsSaved.lighting) do L[k] = v end
+    end)
+    fpsSaved.lighting = {}
+
+    -- Restore QualityLevel
+    pcall(function()
+        if settings and settings().Rendering and fpsSaved.qualityLevel then
+            settings().Rendering.QualityLevel = fpsSaved.qualityLevel
+        end
+        if settings and settings().Rendering and fpsSaved.meshDetail then
+            settings().Rendering.MeshPartDetailLevel = fpsSaved.meshDetail
+        end
+    end)
+
+    -- Restore Terrain
+    pcall(function()
+        local t = workspace:FindFirstChildOfClass("Terrain")
+        if t then
+            for k, v in pairs(fpsSaved.terrain) do t[k] = v end
+            pcall(function() t.Decoration = true end)
+        end
+    end)
+    fpsSaved.terrain = {}
+
+    -- Restore post-processing
+    for fx in pairs(fpsSaved.postFx) do
+        pcall(function()
+            if fx and fx.Parent then fx.Enabled = true end
+        end)
+    end
+    fpsSaved.postFx = {}
+
+    -- Restore Atmosphere density
+    for at, d in pairs(fpsSaved.atmos) do
+        pcall(function()
+            if at and at.Parent then at.Density = d end
+        end)
+    end
+    fpsSaved.atmos = {}
+
+    -- Restore effects
+    for fx in pairs(fpsSaved.effects) do
+        pcall(function()
+            if fx and fx.Parent then fx.Enabled = true end
+        end)
+    end
+    fpsSaved.effects = {}
+
+    -- Restore part shadows
+    for p in pairs(fpsSaved.parts) do
+        pcall(function()
+            if p and p.Parent then p.CastShadow = true end
+        end)
+    end
+    fpsSaved.parts = {}
+
+    -- Restore FPS cap
+    pcall(function() if setfpscap then setfpscap(240) end end)
+end
+
+local function setFPS(on)
+    if on then enableFPS() else disableFPS() end
+end
+
+-- ==================================================================
+-- ============ MAP BRIGHT — SNAPSHOT + RESTORE =====================
+-- ==================================================================
+local mbSaved = nil
+local function setMapBright(on)
+    if on then
+        if mbSaved then return end
+        mbSaved = {
+            Brightness = L.Brightness,
+            ClockTime = L.ClockTime,
+            Ambient = L.Ambient,
+            OutdoorAmbient = L.OutdoorAmbient,
+            FogEnd = L.FogEnd,
+            FogStart = L.FogStart,
+            GlobalShadows = L.GlobalShadows,
+            ExposureCompensation = L.ExposureCompensation,
+            postFx = {},
+            atmos = {},
+        }
         pcall(function()
             L.Brightness=3 L.ClockTime=14
             L.Ambient=Color3.fromRGB(180,180,180)
@@ -505,49 +624,60 @@ local function tMapBright(on)
             L.FogEnd=100000 L.FogStart=100000
             L.GlobalShadows=false L.ExposureCompensation=0.5
         end)
-        for _,v in ipairs(L:GetChildren()) do
+        for _, v in ipairs(L:GetChildren()) do
             pcall(function()
-                if v:IsA("ColorCorrectionEffect") then v.Enabled=false end
-                if v:IsA("Atmosphere") then v.Density=0 end
-                if v:IsA("BloomEffect") then v.Intensity=0 end
-                if v:IsA("BlurEffect") then v.Size=0 end
+                if v:IsA("PostEffect") and v.Enabled then
+                    mbSaved.postFx[v] = true
+                    v.Enabled = false
+                elseif v:IsA("Atmosphere") then
+                    mbSaved.atmos[v] = v.Density
+                    v.Density = 0
+                end
             end)
         end
     else
-        if savedLighting then
+        if mbSaved then
             pcall(function()
-                L.Brightness=savedLighting.Brightness
-                L.ClockTime=savedLighting.ClockTime
-                L.Ambient=savedLighting.Ambient
-                L.OutdoorAmbient=savedLighting.OutdoorAmbient
-                L.FogEnd=savedLighting.FogEnd
-                L.FogStart=savedLighting.FogStart
-                L.GlobalShadows=savedLighting.GlobalShadows
-                L.ExposureCompensation=savedLighting.ExposureCompensation
+                L.Brightness=mbSaved.Brightness
+                L.ClockTime=mbSaved.ClockTime
+                L.Ambient=mbSaved.Ambient
+                L.OutdoorAmbient=mbSaved.OutdoorAmbient
+                L.FogEnd=mbSaved.FogEnd
+                L.FogStart=mbSaved.FogStart
+                L.GlobalShadows=mbSaved.GlobalShadows
+                L.ExposureCompensation=mbSaved.ExposureCompensation
             end)
-            savedLighting=nil
+            for fx in pairs(mbSaved.postFx) do
+                pcall(function()
+                    if fx and fx.Parent then fx.Enabled = true end
+                end)
+            end
+            for at, d in pairs(mbSaved.atmos) do
+                pcall(function()
+                    if at and at.Parent then at.Density = d end
+                end)
+            end
+            mbSaved = nil
         end
     end
 end
 
--- ============ BG SAFETY: NO FALL DAMAGE + NO VOID ============
+-- ==================================================================
+-- ============ BG SAFETY (No fall damage + Anti-void) ==============
+-- ==================================================================
 local lastSafeCF = nil
 local bgConn = nil
 local MAX_FALL = 45
-
 local function setupBgSafety(char)
     if bgConn then bgConn:Disconnect() bgConn=nil end
     local h = char:WaitForChild("Humanoid", 5)
     if not h then return end
     local hr = char:WaitForChild("HumanoidRootPart", 5)
     if not hr then return end
-
     pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) end)
     pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end)
-
     local lastHp = h.Health
     local protectUntil = 0
-
     h.HealthChanged:Connect(function(newHp)
         if newHp < lastHp and tick() < protectUntil then
             h.Health = lastHp
@@ -555,7 +685,6 @@ local function setupBgSafety(char)
         end
         lastHp = h.Health
     end)
-
     bgConn = RS.Heartbeat:Connect(function()
         if not hr or not hr.Parent then return end
         local v = hr.AssemblyLinearVelocity
@@ -574,14 +703,12 @@ local function setupBgSafety(char)
         end
     end)
 end
-
-pl.CharacterAdded:Connect(function(c)
-    task.wait(0.3)
-    setupBgSafety(c)
-end)
+pl.CharacterAdded:Connect(function(c) task.wait(0.3) setupBgSafety(c) end)
 if pl.Character then setupBgSafety(pl.Character) end
 
--- ============ ATTACK REMOTES ============
+-- ==================================================================
+-- ============ ATTACK REMOTES ======================================
+-- ==================================================================
 local attackRemotes={}
 local function scanAttackRemotes()
     local tmp={}
@@ -633,7 +760,9 @@ local function fireAttack()
     end
 end
 
--- ============ AUTO ATTACK ============
+-- ==================================================================
+-- ============ AUTO ATTACK =========================================
+-- ==================================================================
 local function aaApplySpeed()
     local c=pl.Character if not c then return end
     for _,v in ipairs(c:GetDescendants()) do
@@ -680,7 +809,9 @@ RS.Heartbeat:Connect(function(dt)
     if aa.atkSpd then aaApplySpeed() end
 end)
 
--- ============ TELEPORT ============
+-- ==================================================================
+-- ============ TELEPORT ============================================
+-- ==================================================================
 teleportTo=function(targetPos)
     local c=pl.Character if not c then return end
     local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return end
@@ -702,6 +833,7 @@ teleportTo=function(targetPos)
         end
     end)
 end
+-- Auto-attack follow target
 RS.Heartbeat:Connect(function()
     if not aa.hoverOn or not aa.target or not aa.target.Parent then return end
     local tc=aa.target.Character if not tc then return end
@@ -710,9 +842,10 @@ RS.Heartbeat:Connect(function()
     teleportTo(predicted+Vector3.new(0,aa.hoverDist,0))
 end)
 
--- ============ ESP PLAYER ============
+-- ==================================================================
+-- ============ ESP PLAYER ==========================================
+-- ==================================================================
 local evs={} local trcs={}
-
 local function measureBody(char)
     local hrp=char:FindFirstChild("HumanoidRootPart")
     local head=char:FindFirstChild("Head")
@@ -824,167 +957,6 @@ local function applyESPToggles()
     end
 end
 
--- ============ NPC + ITEM ESP ============
-local npcEvs={} local itemEvs={}
-local npcConn=nil local itemConn=nil
-
-local function isPlayerCharacter(model)
-    if not model then return false end
-    for _,p in ipairs(P:GetPlayers()) do
-        if p.Character==model then return true end
-    end
-    return false
-end
-
-local function buildNPCEsp(model)
-    if npcEvs[model] then return end
-    local hr=model:FindFirstChild("HumanoidRootPart")
-    if not hr then return end
-    local hum=model:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-    local fold=Instance.new("Folder",enf) fold.Name=model.Name
-    local hl=Instance.new("Highlight",fold)
-    hl.Adornee=model hl.FillColor=RED hl.FillTransparency=0.7 hl.OutlineColor=RED
-    hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
-    local bb=Instance.new("BillboardGui",fold)
-    bb.Adornee=hr bb.Size=UDim2.new(0,140,0,26) bb.StudsOffset=Vector3.new(0,3.2,0)
-    bb.AlwaysOnTop=true bb.MaxDistance=3000 bb.LightInfluence=0
-    local l=Instance.new("TextLabel",bb)
-    l.Size=UDim2.new(1,0,1,0) l.BackgroundTransparency=0.5
-    l.BackgroundColor3=Color3.fromRGB(30,0,0) l.Text=model.Name
-    l.Font=Enum.Font.Code l.TextSize=12 l.TextColor3=RED
-    l.TextStrokeTransparency=0.3 l.TextStrokeColor3=Color3.new(0,0,0)
-    npcEvs[model]={folder=fold,hl=hl,bb=bb}
-end
-local function destroyNPCEsp(model)
-    if npcEvs[model] then pcall(function() npcEvs[model].folder:Destroy() end) npcEvs[model]=nil end
-end
-
-local furnitureKeywords = {"bathub","bathtub","stool","footstool","table","bed","chair","crate","shelf","lamp","door","fence","wall","floor","rug","carpet","window","curtain","desk","cabinet","sofa","couch","bench","sign","tree","bush","rock","poster","picture","frame","mirror","sink","toilet","shower","closet","drawer","bookcase","counter","fridge","oven","stove","microwave","speaker","tv","monitor","roof","pillar","stairs","railing"}
-local itemKeywords = {"food","apple","bread","soda","medkit","bandage","drink","pistol","rifle","ammo","weapon","knife","axe","sword","supply","meat","fish","soup","bean","juice","cola","coke","bottle","canned","gun","potion","herb","berry","tool"}
-local function isPickable(inst)
-    if inst:IsA("Tool") then return true end
-    local n = string.lower(inst.Name)
-    for _, k in ipairs(furnitureKeywords) do
-        if n:find(k) then return false end
-    end
-    for _, k in ipairs(itemKeywords) do
-        if n:find(k) then return true end
-    end
-    return false
-end
-
-local function buildItemEsp(inst)
-    if itemEvs[inst] then return end
-    local target=inst
-    if inst:IsA("Model") then
-        target=inst:FindFirstChildWhichIsA("BasePart",true)
-    elseif inst:IsA("Tool") then
-        target=inst:FindFirstChild("Handle") or inst:FindFirstChildWhichIsA("BasePart",true)
-    end
-    if not target then return end
-    local fold=Instance.new("Folder",enf) fold.Name=inst.Name
-    local hl=Instance.new("Highlight",fold)
-    hl.Adornee=inst
-    hl.FillColor=YEL hl.FillTransparency=0.6 hl.OutlineColor=YEL
-    hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
-    local bb=Instance.new("BillboardGui",fold)
-    bb.Adornee=target bb.Size=UDim2.new(0,120,0,20) bb.StudsOffset=Vector3.new(0,1.5,0)
-    bb.AlwaysOnTop=true bb.MaxDistance=2000 bb.LightInfluence=0
-    local l=Instance.new("TextLabel",bb)
-    l.Size=UDim2.new(1,0,1,0) l.BackgroundTransparency=0.5
-    l.BackgroundColor3=Color3.fromRGB(30,25,0) l.Text=inst.Name
-    l.Font=Enum.Font.Code l.TextSize=11 l.TextColor3=YEL
-    l.TextStrokeTransparency=0.3 l.TextStrokeColor3=Color3.new(0,0,0)
-    itemEvs[inst]={folder=fold,hl=hl,bb=bb,target=target}
-end
-local function destroyItemEsp(inst)
-    if itemEvs[inst] then pcall(function() itemEvs[inst].folder:Destroy() end) itemEvs[inst]=nil end
-end
-
-local function scanNPCs()
-    if not tg.espNPC then return end
-    task.spawn(function()
-        local all=workspace:GetDescendants()
-        for i=1,#all do
-            if not tg.espNPC then return end
-            local o=all[i]
-            if o and o.Parent and o:IsA("Model") and not npcEvs[o] and not evs[o] then
-                local hum=o:FindFirstChildOfClass("Humanoid")
-                if hum and o:FindFirstChild("HumanoidRootPart") and not isPlayerCharacter(o) then
-                    buildNPCEsp(o)
-                end
-            end
-            if i%60==0 then task.wait() end
-        end
-    end)
-end
-
-local function scanItems()
-    if not tg.espItem then return end
-    task.spawn(function()
-        local all=workspace:GetDescendants()
-        for i=1,#all do
-            if not tg.espItem then return end
-            local o=all[i]
-            if o and o.Parent and not itemEvs[o] then
-                if isPickable(o) then buildItemEsp(o) end
-            end
-            if i%60==0 then task.wait() end
-        end
-    end)
-end
-
-local function enableNPCScan()
-    if npcConn then return end
-    scanNPCs()
-    npcConn=workspace.DescendantAdded:Connect(function(o)
-        if not tg.espNPC then return end
-        if o:IsA("Model") then
-            task.wait(0.15)
-            if o.Parent and not npcEvs[o] then
-                local hum=o:FindFirstChildOfClass("Humanoid")
-                if hum and o:FindFirstChild("HumanoidRootPart") and not isPlayerCharacter(o) then
-                    buildNPCEsp(o)
-                end
-            end
-        end
-    end)
-end
-local function disableNPCScan()
-    if npcConn then npcConn:Disconnect() npcConn=nil end
-    for m in pairs(npcEvs) do destroyNPCEsp(m) end
-end
-local function enableItemScan()
-    if itemConn then return end
-    scanItems()
-    itemConn=workspace.DescendantAdded:Connect(function(o)
-        if not tg.espItem then return end
-        task.wait(0.15)
-        if o.Parent and not itemEvs[o] then
-            if isPickable(o) then buildItemEsp(o) end
-        end
-    end)
-end
-local function disableItemScan()
-    if itemConn then itemConn:Disconnect() itemConn=nil end
-    for m in pairs(itemEvs) do destroyItemEsp(m) end
-end
-
--- cleanup loop (throttled)
-task.spawn(function()
-    while true do
-        task.wait(3)
-        if tg.espNPC then
-            for m in pairs(npcEvs) do if not m.Parent then destroyNPCEsp(m) end end
-        end
-        if tg.espItem then
-            for m in pairs(itemEvs) do if not m.Parent then destroyItemEsp(m) end end
-        end
-    end
-end)
-
--- ESP scan loop (throttled)
 task.spawn(function()
     while true do
         task.wait(1)
@@ -1000,169 +972,60 @@ task.spawn(function()
     end
 end)
 
--- ============ NOCLIP (event-based, zero per-frame cost) ============
-local noclipChildConn = nil
-local function applyNoclip(part)
-    if part:IsA("BasePart") then part.CanCollide = false end
+-- ==================================================================
+-- ============ NOCLIP — SNAPSHOT + RESTORE =========================
+-- ==================================================================
+local noclipSaved = {}   -- [part] = originalCanCollide
+local noclipConn = nil
+
+local function noclipApply(part)
+    if not part:IsA("BasePart") then return end
+    if noclipSaved[part] == nil then
+        noclipSaved[part] = part.CanCollide
+    end
+    part.CanCollide = false
 end
-local function setNoclipActive(on)
-    if noclipChildConn then noclipChildConn:Disconnect() noclipChildConn = nil end
+
+local function setNoclip(on)
+    -- Disconnect old
+    if noclipConn then noclipConn:Disconnect() noclipConn = nil end
     local c = pl.Character
-    if not c then return end
     if on then
-        for _, p in ipairs(c:GetDescendants()) do applyNoclip(p) end
-        noclipChildConn = c.DescendantAdded:Connect(applyNoclip)
-    else
-        for _, p in ipairs(c:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide = true end
+        -- restore old map nếu có
+        for part, orig in pairs(noclipSaved) do
+            pcall(function()
+                if part and part.Parent then part.CanCollide = orig end
+            end)
         end
+        noclipSaved = {}
+        if c then
+            for _, p in ipairs(c:GetDescendants()) do noclipApply(p) end
+            noclipConn = c.DescendantAdded:Connect(noclipApply)
+        end
+    else
+        for part, orig in pairs(noclipSaved) do
+            pcall(function()
+                if part and part.Parent then part.CanCollide = orig end
+            end)
+        end
+        noclipSaved = {}
     end
 end
 pl.CharacterAdded:Connect(function(c)
     if tg.noclip then
         task.wait(0.3)
-        setNoclipActive(true)
+        setNoclip(true)  -- rebind trên char mới
     end
 end)
 
--- ============ AUTO PICKUP (WALK THROUGH - Touched events) ============
-local autoPickConns = {}
-local autoPickAddedConn = nil
-
-local function tryPickup(part)
-    if not part or not part.Parent then return end
-    local c = pl.Character
-    local hr = c and c:FindFirstChild("HumanoidRootPart")
-    if not hr then return end
-    pcall(function()
-        if firetouchinterest then
-            firetouchinterest(hr, part, 0)
-            firetouchinterest(hr, part, 1)
-        end
-    end)
-    if c then
-        for _, op in ipairs(c:GetChildren()) do
-            if op:IsA("BasePart") then
-                pcall(function()
-                    if firetouchinterest then
-                        firetouchinterest(op, part, 0)
-                        firetouchinterest(op, part, 1)
-                    end
-                end)
-            end
-        end
-    end
-    local pp = part:FindFirstChildOfClass("ProximityPrompt")
-    if pp and fireproximityprompt then pcall(fireproximityprompt, pp) end
-end
-
-local function attachPickup(inst)
-    if not tg.autoPick then return end
-    if not isPickable(inst) then return end
-    local part = inst:IsA("BasePart") and inst or inst:FindFirstChildWhichIsA("BasePart", true)
-    if not part or autoPickConns[part] then return end
-
-    local conn = part.Touched:Connect(function(hit)
-        if not tg.autoPick then return end
-        local c = pl.Character
-        if c and hit and hit:IsDescendantOf(c) then
-            tryPickup(part)
-        end
-    end)
-    autoPickConns[part] = conn
-end
-
-local function scanPickupNearby()
-    if not tg.autoPick then return end
-    task.spawn(function()
-        local c = pl.Character
-        local hr = c and c:FindFirstChild("HumanoidRootPart")
-        if not hr then return end
-        local all = workspace:GetDescendants()
-        for i = 1, #all do
-            if not tg.autoPick then return end
-            local o = all[i]
-            if o and o.Parent and not autoPickConns[o] then
-                if o:IsA("Tool") or o:IsA("Model") or o:IsA("BasePart") then
-                    if isPickable(o) then
-                        local part = o:IsA("BasePart") and o or o:FindFirstChildWhichIsA("BasePart", true)
-                        if part and part.Parent then
-                            local d = (part.Position - hr.Position).Magnitude
-                            if d < 200 then attachPickup(o) end
-                        end
-                    end
-                end
-            end
-            if i % 60 == 0 then task.wait() end
-        end
-    end)
-end
-
-local function setAutoPick(on)
-    for _, conn in pairs(autoPickConns) do
-        pcall(function() conn:Disconnect() end)
-    end
-    autoPickConns = {}
-    if autoPickAddedConn then autoPickAddedConn:Disconnect() autoPickAddedConn = nil end
-    if on then
-        scanPickupNearby()
-        autoPickAddedConn = workspace.DescendantAdded:Connect(function(o)
-            if not tg.autoPick then return end
-            task.wait(0.1)
-            if o and o.Parent and isPickable(o) then attachPickup(o) end
-        end)
-    end
-end
-
--- ============ ANTI AFK ============
-task.spawn(function()
-    while true do
-        task.wait(20)
-        if tg.antiAFK then
-            local vim=getVIM()
-            if vim then pcall(function() vim:CaptureController() vim:ClickButton2(Vector2.new()) end) end
-        end
-    end
-end)
-
--- ============ TRAIL ============
-local trailCache=nil local trailAtts={}
-RS.Heartbeat:Connect(function()
-    local c=pl.Character if not c then trailCache=nil return end
-    local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return end
-    if tg.trail then
-        if not trailCache or trailCache.Parent~=hr then
-            if trailCache then trailCache:Destroy() end
-            for _,a in ipairs(trailAtts) do if a and a.Parent then a:Destroy() end end
-            trailAtts={}
-            local a0=Instance.new("Attachment",hr) a0.Position=Vector3.new(0,0.5,0)
-            local a1=Instance.new("Attachment",hr) a1.Position=Vector3.new(0,-0.5,0)
-            trailAtts={a0,a1}
-            local tr=Instance.new("Trail",hr)
-            tr.Attachment0=a0 tr.Attachment1=a1 tr.Lifetime=1.2 tr.MinLength=0 tr.FaceCamera=true
-            trailCache=tr
-        end
-        if trailCache then
-            local hue=(tick()*0.4)%1
-            trailCache.Color=ColorSequence.new(Color3.fromHSV(hue,1,1))
-            trailCache.Transparency=NumberSequence.new(0.3)
-        end
-    else
-        if trailCache then trailCache:Destroy() trailCache=nil end
-        for _,a in ipairs(trailAtts) do if a and a.Parent then a:Destroy() end end
-        trailAtts={}
-    end
-end)
-
--- ============ POPULATE UI ============
+-- ==================================================================
+-- ============ POPULATE UI =========================================
+-- ==================================================================
 mkSec(pages["MOVE"],"// SPEED")
 mkSli(pages["MOVE"],"Walk Speed",16,500,16,function(v) stt.ws=v end)
 mkSec(pages["MOVE"],"// JUMP")
 mkSli(pages["MOVE"],"Jump Power",50,300,50,function(v) stt.jp=v end)
 mkTog(pages["MOVE"],"INFINITE JUMP",false,function(on) tg.infJump=on end)
-mkSec(pages["MOVE"],"// HOVER")
-mkSli(pages["MOVE"],"Hover Height",2,20,10,function(v) stt.hh=v end)
-mkTog(pages["MOVE"],"CHAN MA (hover)",false,function(on) tg.hover=on end)
 
 mkSec(pages["ESP"],"// PLAYER ESP")
 mkTog(pages["ESP"],"ESP LINE (RAINBOW)",false,function(on) tg.espLine=on end)
@@ -1170,12 +1033,8 @@ mkTog(pages["ESP"],"ESP NAME",false,function(on) tg.espName=on applyESPToggles()
 mkTog(pages["ESP"],"ESP HEALTH",false,function(on) tg.espHp=on applyESPToggles() end)
 mkTog(pages["ESP"],"ESP DISTANCE",false,function(on) tg.espDist=on applyESPToggles() end)
 mkTog(pages["ESP"],"ESP BODY FX",false,function(on) tg.espBody=on applyESPToggles() end)
-mkSec(pages["ESP"],"// NPC / ITEM ESP")
-mkTog(pages["ESP"],"NPC / ZOMBIE ESP",false,function(on) tg.espNPC=on if on then enableNPCScan() else disableNPCScan() end end)
-mkTog(pages["ESP"],"ITEM ESP (PICKABLE)",false,function(on) tg.espItem=on if on then enableItemScan() else disableItemScan() end end)
 
 mkSec(pages["COMBAT"],"// AUTO ATTACK")
-mkSli(pages["COMBAT"],"Atk Speed",1,200,200,function(v) aa.speed=v end)
 mkSli(pages["COMBAT"],"Hover Dist",0,10,0,function(v) aa.hoverDist=v end)
 local aaTargetBtn=mkBtn(pages["COMBAT"],"TARGET: (none)",function() end)
 local function openTargetPicker()
@@ -1199,21 +1058,16 @@ mkTog(pages["COMBAT"],"AUTO ATTACK",false,function(on)
         aaTargetBtn.Text="  > TARGET: chon truoc!"
         return
     end
-    aa.enabled=on aa.atkSpd=on aa.hoverOn=on
+    aa.enabled=on
+    aa.atkSpd=on
+    aa.hoverOn=on
 end)
-mkSec(pages["COMBAT"],"// AIMLOCK")
-mkTog(pages["COMBAT"],"AIM ENEMY",false,function(on) tg.aimE=on end)
-mkTog(pages["COMBAT"],"AIM ALL",false,function(on) tg.aimA=on end)
 
 mkSec(pages["PLAYER"],"// PERFORMANCE")
-mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on tFPS(on) end)
-mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on tMapBright(on) end)
+mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on setFPS(on) end)
+mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on setMapBright(on) end)
 mkSec(pages["PLAYER"],"// SURVIVAL")
-mkTog(pages["PLAYER"],"ANTI AFK",false,function(on) tg.antiAFK=on end)
-mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclipActive(on) end)
-mkTog(pages["PLAYER"],"AUTO PICKUP (đi qua = nhặt)",false,function(on) tg.autoPick=on setAutoPick(on) end)
-mkSec(pages["PLAYER"],"// EFFECT")
-mkTog(pages["PLAYER"],"TRAIL RAINBOW",false,function(on) tg.trail=on end)
+mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclip(on) end)
 mkSec(pages["PLAYER"],"// CAMERA")
 mkSli(pages["PLAYER"],"FOV",70,120,70,function(v) cam.FieldOfView=v end)
 mkSec(pages["PLAYER"],"// UTILITIES")
@@ -1243,7 +1097,6 @@ local function openTpPicker()
     dlg.Visible=true dlgOverlay.Visible=true
 end
 tpTargetBtn.MouseButton1Click:Connect(function() openTpPicker() end)
-mkSli(pages["TELE"],"TP Height",-10,30,3,function(v) stt.tph=v end)
 local tpCD=false
 mkBtn(pages["TELE"],"TELEPORT TO PLAYER",function()
     if not tpSelected or tpCD then return end
@@ -1252,7 +1105,7 @@ mkBtn(pages["TELE"],"TELEPORT TO PLAYER",function()
     local th=tpSelected.Character and tpSelected.Character:FindFirstChild("HumanoidRootPart")
     if not th then return end
     tpCD=true
-    teleportTo(th.Position+Vector3.new(0,stt.tph,0))
+    teleportTo(th.Position+Vector3.new(0,3,0))
     task.wait(.5)
     tpCD=false
 end)
@@ -1296,22 +1149,11 @@ for si=1,3 do
                     end
                     closeDlg()
                 end)
-                dlgBtn("RENAME",YEL,function()
-                    closeDlg() task.wait(0.1)
-                    openTxt("RENAME POINT",pt2.name,function(t) pt2.name=t svW() end)
-                end)
                 dlgBtn("DELETE",RED,function() pt2.cf=nil svW() closeDlg() end)
                 dlgBtn("CLOSE",DIM,function() closeDlg() end)
                 dlg.Visible=true dlgOverlay.Visible=true
             end)
         end
-        dlgBtn("RENAME SLOT",YEL,function()
-            closeDlg() task.wait(0.1)
-            openTxt("RENAME SLOT",wd.slots[sIdx].name,function(t)
-                wd.slots[sIdx].name=t svW()
-                slotBtn.Text="  > [ "..t.." ]"
-            end)
-        end)
         dlgBtn("CLOSE",DIM,function() closeDlg() end)
         dlg.Visible=true dlgOverlay.Visible=true
     end)
@@ -1393,9 +1235,9 @@ RS.RenderStepped:Connect(function() frmCnt=frmCnt+1 end)
 
 task.spawn(function()
     while true do
-        task.wait(1.5)
+        task.wait(2)
         if pages["INFO"] and pages["INFO"].Visible then
-            local fps=math.floor(frmCnt/1.5) frmCnt=0
+            local fps=math.floor(frmCnt/2) frmCnt=0
             table.insert(fpsHist,fps)
             if #fpsHist>20 then table.remove(fpsHist,1) end
             local sum=0
@@ -1430,22 +1272,16 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v11.1"
+                infoRefs.ver.Text="v11.3"
                 local a={}
-                if tg.hover then table.insert(a,"HOVER") end
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
                 if tg.espHp then table.insert(a,"HP") end
                 if tg.espDist then table.insert(a,"DIST") end
                 if tg.espBody then table.insert(a,"BODY") end
-                if tg.espNPC then table.insert(a,"NPC") end
-                if tg.espItem then table.insert(a,"ITEM") end
                 if tg.noclip then table.insert(a,"NOCLIP") end
-                if tg.autoPick then table.insert(a,"PICK") end
                 if tg.mapBright then table.insert(a,"BRIGHT") end
                 if tg.fps then table.insert(a,"FPS+") end
-                if tg.antiAFK then table.insert(a,"AFK") end
-                if tg.trail then table.insert(a,"TRAIL") end
                 if aa.enabled then table.insert(a,"AA") end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
@@ -1495,7 +1331,7 @@ local function hideMenu()
 end
 cl.MouseButton1Click:Connect(hideMenu)
 
--- ONE throttled animation loop (rain + glow + cursor) - 16fps visual, 0 lag
+-- Throttled visual loop (rain + glow + cursor)
 task.spawn(function()
     local tGlow = 0
     local tCursor = 0
@@ -1540,7 +1376,7 @@ UIS.InputEnded:Connect(function(i)
 end)
 main.Position=toggleBtn.Position
 
--- RENDER LOOP (ESP only, no rain, no glow)
+-- RENDER LOOP
 local rT=0
 local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
 local espFrame=0
@@ -1549,7 +1385,6 @@ RS.RenderStepped:Connect(function(dt)
     rT=tick()
     espFrame=espFrame+1
 
-    -- Rainbow lines (throttled to ~30fps internally via check)
     if tg.espLine and drawingAvailable and (espFrame % 2 == 0) then
         local ct2=Vector2.new(cam.ViewportSize.X/2,0)
         local rb=Color3.fromHSV(rT%4/4,1,1)
@@ -1576,7 +1411,6 @@ RS.RenderStepped:Connect(function(dt)
         trcs={}
     end
 
-    -- Player ESP
     if tg.espName or tg.espHp or tg.espDist or tg.espBody then
         local myChar=pl.Character
         local myHR=myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -1635,37 +1469,6 @@ RS.RenderStepped:Connect(function(dt)
             end
         end
     end
-
-    -- Aimlock
-    if tg.aimE or tg.aimA then
-        local c=pl.Character
-        if c and c:FindFirstChild("HumanoidRootPart") then
-            local hds={}
-            for _,p in ipairs(P:GetPlayers()) do
-                if p~=pl and p.Character then
-                    local hd=p.Character:FindFirstChild("Head")
-                    local h=p.Character:FindFirstChildOfClass("Humanoid")
-                    if hd and h and h.Health>0 then
-                        local isE=true
-                        if p.Team and pl.Team and p.Team==pl.Team then isE=false end
-                        if tg.aimA or (tg.aimE and isE) then table.insert(hds,hd) end
-                    end
-                end
-            end
-            if #hds>0 then
-                local cn=Vector2.new(cam.ViewportSize.X/2,cam.ViewportSize.Y/2)
-                local bt,bd=nil,math.huge
-                for _,h in ipairs(hds) do
-                    local sp,on2=cam:WorldToViewportPoint(h.Position)
-                    if on2 then
-                        local d=(Vector2.new(sp.X,sp.Y)-cn).Magnitude
-                        if d<bd then bd=d bt=h end
-                    end
-                end
-                if bt then cam.CFrame=cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position,bt.Position),.3) end
-            end
-        end
-    end
 end)
 
 -- Movement Heartbeat
@@ -1675,28 +1478,14 @@ RS.Heartbeat:Connect(function(dt)
         local h=c:FindFirstChildOfClass("Humanoid")
         local hr=c:FindFirstChild("HumanoidRootPart")
         if h and hr and h.Health>0 then
-            if not tg.hover then
-                if stt.ws>16 then
-                    h.WalkSpeed=stt.ws
-                    if h.MoveDirection.Magnitude>.1 then
-                        local v=h.MoveDirection.Unit*stt.ws
-                        hr.AssemblyLinearVelocity=Vector3.new(v.X,hr.AssemblyLinearVelocity.Y,v.Z)
-                    end
-                else h.WalkSpeed=16 end
-            end
+            if stt.ws>16 then
+                h.WalkSpeed=stt.ws
+                if h.MoveDirection.Magnitude>.1 then
+                    local v=h.MoveDirection.Unit*stt.ws
+                    hr.AssemblyLinearVelocity=Vector3.new(v.X,hr.AssemblyLinearVelocity.Y,v.Z)
+                end
+            else h.WalkSpeed=16 end
             if stt.jp>50 then h.UseJumpPower=true h.JumpPower=stt.jp end
-            if tg.hover then
-                h.HipHeight=stt.hh
-                h:SetStateEnabled(Enum.HumanoidStateType.Falling,false)
-                h:SetStateEnabled(Enum.HumanoidStateType.Freefall,false)
-                h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,false)
-                pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end)
-            else
-                if h.HipHeight>2 then h.HipHeight=2 end
-                h:SetStateEnabled(Enum.HumanoidStateType.Falling,true)
-                h:SetStateEnabled(Enum.HumanoidStateType.Freefall,true)
-                h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,true)
-            end
         end
     end
 end)
@@ -1724,7 +1513,6 @@ for _,p in ipairs(P:GetPlayers()) do
 end
 applyESPToggles()
 
--- FPS display (2s interval, no lag)
 task.spawn(function()
     while true do
         task.wait(2)
@@ -1736,7 +1524,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v11.1] loaded - FULLY OPTIMIZED")
+print("[HACKER NEKO v11.3 SMOOTH] loaded")
 
 end)
 
