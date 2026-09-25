@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v11.6 — SIMPLE WAYPOINT =================
+-- ============ HACKER NEKO v11.9 ===================================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -14,7 +14,6 @@ local HS=game:GetService("HttpService")
 local pl=P.LocalPlayer
 local cam=workspace.CurrentCamera
 
--- COLORS
 local G   = Color3.fromRGB(0,255,120)
 local G2  = Color3.fromRGB(0,180,80)
 local G3  = Color3.fromRGB(200,255,220)
@@ -27,7 +26,6 @@ local RED = Color3.fromRGB(255,60,80)
 local YEL = Color3.fromRGB(255,220,100)
 local ORG = Color3.fromRGB(255,150,50)
 
--- GUI PARENT
 local gp
 pcall(function() gp = gethui and gethui() end)
 if not gp then pcall(function() gp = game:GetService("CoreGui") end) end
@@ -44,14 +42,14 @@ sg.Parent=gp
 local ef=Instance.new("Folder",gp) ef.Name="NekoESP"
 local epf=Instance.new("Folder",ef) epf.Name="Players"
 
--- STATE
 local stt={ws=16,jp=50}
 local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
     noclip=false,mapBright=false,fps=false,infJump=false}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
+local hitboxScale = 1
 local teleportTo
 
--- ============ WAYPOINT STORAGE (SIMPLE - 8 SLOTS) ============
+-- WAYPOINT STORAGE
 local hfa=(writefile~=nil) and (readfile~=nil) and (isfile~=nil)
 local WPF="NekoWPs_"..tostring(game.PlaceId)..".json"
 local wps = {nil, nil, nil, nil, nil, nil, nil, nil}
@@ -81,25 +79,6 @@ local function cfFromArr(arr)
     return CFrame.new(arr[1],arr[2],arr[3],arr[4],arr[5],arr[6],arr[7],arr[8],arr[9],arr[10],arr[11],arr[12])
 end
 
--- ============ SPAWN MANAGER ============
-local SPF="NekoSpawn_"..tostring(game.PlaceId)..".json"
-local spawnData = { savedCF = nil, autoReturn = false }
-if hfa and isfile(SPF) then
-    pcall(function()
-        local d = HS:JSONDecode(readfile(SPF))
-        if d then
-            spawnData.savedCF = d.cf
-            spawnData.autoReturn = d.auto or false
-        end
-    end)
-end
-local function saveSpawn()
-    if not hfa then return end
-    pcall(function()
-        writefile(SPF, HS:JSONEncode({ cf = spawnData.savedCF, auto = spawnData.autoReturn }))
-    end)
-end
-
 -- TOGGLE BUTTON
 local toggleBtn=Instance.new("Frame",sg)
 toggleBtn.Size=UDim2.new(0,48,0,48) toggleBtn.Position=UDim2.new(0,30,0,120)
@@ -126,7 +105,6 @@ Instance.new("UICorner",main).CornerRadius=UDim.new(0,4)
 local stk=Instance.new("UIStroke",main) stk.Color=G stk.Thickness=1.5
 local stkGlow=Instance.new("UIStroke",main) stkGlow.Color=G stkGlow.Thickness=5 stkGlow.Transparency=0.85
 
--- RAIN
 local rainFrame=Instance.new("Frame",main)
 rainFrame.Size=UDim2.new(1,-4,1,-4) rainFrame.Position=UDim2.new(0,2,0,2)
 rainFrame.BackgroundTransparency=1 rainFrame.ClipsDescendants=true rainFrame.ZIndex=1
@@ -191,7 +169,6 @@ fpsLbl.Size=UDim2.new(0,80,1,0) fpsLbl.Position=UDim2.new(1,-88,0,0)
 fpsLbl.BackgroundTransparency=1 fpsLbl.Text="-- FPS" fpsLbl.Font=Enum.Font.Code
 fpsLbl.TextSize=9 fpsLbl.TextColor3=CY fpsLbl.TextXAlignment=Enum.TextXAlignment.Right fpsLbl.ZIndex=111
 
--- DIALOG (chỉ còn dùng cho chọn player)
 local dlgOverlay=Instance.new("Frame",sg)
 dlgOverlay.Size=UDim2.new(1,0,1,0) dlgOverlay.BackgroundColor3=Color3.new(0,0,0)
 dlgOverlay.BackgroundTransparency=.6 dlgOverlay.BorderSizePixel=0 dlgOverlay.Visible=false dlgOverlay.ZIndex=900
@@ -230,7 +207,6 @@ dlgOverlay.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then closeDlg() end
 end)
 
--- TABS
 local tabs={"MOVE","ESP","COMBAT","PLAYER","TELE","INFO"}
 local pages={} local tabBtns={}
 
@@ -274,7 +250,6 @@ for i,n in ipairs(tabs) do
     tabBtns[n]={bg=b,txt=txt,pfx=pfx}
 end
 
--- HELPERS
 local function mkSec(parent,txt)
     local s=Instance.new("Frame",parent)
     s.Size=UDim2.new(1,-8,0,16) s.BackgroundTransparency=1
@@ -576,7 +551,7 @@ local function setMapBright(on)
 end
 
 -- ==================================================================
--- ============ TELEPORT SYSTEM (FIX) ==============================
+-- ============ TELEPORT SYSTEM ====================================
 -- ==================================================================
 local teleportBusy = false
 teleportTo = function(targetPos, opts)
@@ -621,98 +596,114 @@ teleportTo = function(targetPos, opts)
     return true
 end
 
--- ============ SPAWN MANAGER ============
-local function setSpawnPoint()
-    local c = pl.Character
-    local hr = c and c:FindFirstChild("HumanoidRootPart")
-    if hr then
-        spawnData.savedCF = {hr.CFrame:GetComponents()}
-        saveSpawn()
-        stLbl.Text = "[ OK ] Đã lưu spawn!"
-        stLbl.TextColor3 = G
-        return true
-    end
-    return false
-end
+-- ==================================================================
+-- ============ FALL DAMAGE PROTECTION (không slow fall) ============
+-- ==================================================================
+local fallProtectUntil = 0
+local fallLastHp = 0
 
-local function tpToSpawn()
-    if not spawnData.savedCF then return false end
-    local cf = cfFromArr(spawnData.savedCF)
-    if cf then
-        return teleportTo(cf.Position + Vector3.new(0, 4, 0), {force=true})
-    end
-    return false
-end
-
-local function clearSpawn()
-    spawnData.savedCF = nil
-    saveSpawn()
-    stLbl.Text = "[ OK ] Đã xóa spawn"
-    stLbl.TextColor3 = YEL
-end
-
--- ============ BG SAFETY ============
-local lastSafeCF = nil
-local bgConn = nil
-local MAX_FALL = 45
-local function setupBgSafety(char)
-    if bgConn then bgConn:Disconnect() bgConn=nil end
+local function setupNoFallDmg(char)
     local h = char:WaitForChild("Humanoid", 5)
     if not h then return end
-    local hr = char:WaitForChild("HumanoidRootPart", 5)
-    if not hr then return end
     pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) end)
-    pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end)
-    local lastHp = h.Health
-    local protectUntil = 0
+    fallLastHp = h.Health
     h.HealthChanged:Connect(function(newHp)
-        if newHp < lastHp and tick() < protectUntil then
-            h.Health = lastHp return
+        if newHp < fallLastHp and tick() < fallProtectUntil then
+            h.Health = fallLastHp
+            return
         end
-        lastHp = h.Health
-    end)
-    bgConn = RS.Heartbeat:Connect(function()
-        if not hr or not hr.Parent then return end
-        local v = hr.AssemblyLinearVelocity
-        if v.Y < -MAX_FALL then
-            hr.AssemblyLinearVelocity = Vector3.new(v.X, -MAX_FALL, v.Z)
-            protectUntil = tick() + 1.5
-        end
-        if hr.Position.Y > 5 then lastSafeCF = hr.CFrame end
-        if hr.Position.Y < -30 and lastSafeCF then
-            pcall(function()
-                hr:SetNetworkOwner(pl)
-                char:PivotTo(lastSafeCF + Vector3.new(0, 5, 0))
-                hr.AssemblyLinearVelocity = Vector3.zero
-                hr.AssemblyAngularVelocity = Vector3.zero
-            end)
-        end
+        fallLastHp = h.Health
     end)
 end
-function setupCharSafety(char)
+
+-- Window: khi rơi nhanh < -75 studs/s → kích hoạt bảo vệ 2 giây
+RS.Heartbeat:Connect(function()
+    local c = pl.Character
+    local hr = c and c:FindFirstChild("HumanoidRootPart")
+    if not hr then return end
+    if hr.AssemblyLinearVelocity.Y < -75 then
+        fallProtectUntil = tick() + 2
+    end
+end)
+
+-- ==================================================================
+-- ============ HITBOX EXPANDER ====================================
+-- ==================================================================
+local hitboxExtra = {}
+local hrpOriginalSize = nil
+
+local function clearHitboxExtra()
+    for _, p in ipairs(hitboxExtra) do
+        pcall(function() p:Destroy() end)
+    end
+    hitboxExtra = {}
+end
+
+local function applyHitbox(scale)
+    local c = pl.Character
+    if not c then return end
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    if hrpOriginalSize then
+        pcall(function() hrp.Size = hrpOriginalSize end)
+    end
+    clearHitboxExtra()
+    if scale <= 1 then return end
+    if not hrpOriginalSize then hrpOriginalSize = hrp.Size end
+    pcall(function() hrp.Size = hrpOriginalSize * scale end)
+    local size = (scale - 1) * 2
+    local positions = {
+        Vector3.new(size, 0, 0),
+        Vector3.new(-size, 0, 0),
+        Vector3.new(0, 0, size),
+        Vector3.new(0, 0, -size),
+    }
+    for _, offset in ipairs(positions) do
+        local p = Instance.new("Part")
+        p.Size = Vector3.new(size*1.5, 4, size*1.5)
+        p.CanCollide = false
+        p.CanTouch = true
+        p.CanQuery = true
+        p.Transparency = 1
+        p.Massless = true
+        p.Anchored = false
+        p.CFrame = hrp.CFrame + offset
+        p.Parent = c
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0 = hrp
+        weld.Part1 = p
+        weld.Parent = p
+        table.insert(hitboxExtra, p)
+    end
+end
+
+-- ==================================================================
+-- ============ CHARACTER SETUP ====================================
+-- ==================================================================
+local function onCharSpawn(char)
     local hr = char:WaitForChild("HumanoidRootPart", 10)
     local h = char:WaitForChild("Humanoid", 10)
     if not hr or not h then return end
-    task.wait(0.8)
+    task.wait(0.4)
     if not hr.Parent then return end
     pcall(function() hr:SetNetworkOwner(pl) end)
-    setupBgSafety(char)
+    setupNoFallDmg(char)
+    if hitboxScale > 1 then
+        task.wait(0.3)
+        applyHitbox(hitboxScale)
+    end
     if tg.noclip then
         task.wait(0.2)
         setNoclip(true)
     end
-    if spawnData.autoReturn and spawnData.savedCF then
-        task.wait(0.5)
-        tpToSpawn()
-    end
 end
-pl.CharacterAdded:Connect(setupCharSafety)
+pl.CharacterAdded:Connect(onCharSpawn)
 if pl.Character then
     task.spawn(function()
         local hr = pl.Character:WaitForChild("HumanoidRootPart", 5)
         if hr then
             pcall(function() hr:SetNetworkOwner(pl) end)
-            setupBgSafety(pl.Character)
+            setupNoFallDmg(pl.Character)
         end
     end)
 end
@@ -815,12 +806,27 @@ RS.Heartbeat:Connect(function(dt)
     aaDisableAnims()
     if aa.atkSpd then aaApplySpeed() end
 end)
+
+-- Auto attack teleport (throttled, không anchored, không spam)
+local aaLastTp = 0
 RS.Heartbeat:Connect(function()
-    if not aa.hoverOn or not aa.target or not aa.target.Parent then return end
-    local tc=aa.target.Character if not tc then return end
-    local thr=tc:FindFirstChild("HumanoidRootPart") if not thr then return end
-    local predicted=thr.Position+thr.AssemblyLinearVelocity*0.1
-    teleportTo(predicted+Vector3.new(0,aa.hoverDist,0), {force=true})
+    if not aa.enabled or not aa.target or not aa.target.Parent then return end
+    local tc = aa.target.Character if not tc then return end
+    local thr = tc:FindFirstChild("HumanoidRootPart") if not thr then return end
+    local c = pl.Character
+    local hr = c and c:FindFirstChild("HumanoidRootPart") if not hr then return end
+
+    local now = tick()
+    if now - aaLastTp < 0.15 then return end
+
+    local targetPos = thr.Position + Vector3.new(0, aa.hoverDist, 0)
+    if (hr.Position - targetPos).Magnitude > 2 then
+        pcall(function() hr:SetNetworkOwner(pl) end)
+        hr.CFrame = CFrame.new(targetPos)
+        hr.AssemblyLinearVelocity = Vector3.zero
+        hr.AssemblyAngularVelocity = Vector3.zero
+        aaLastTp = now
+    end
 end)
 
 -- ============ ESP PLAYER ============
@@ -983,6 +989,23 @@ function setNoclip(on)
     end
 end
 
+-- Noclip watchdog: chống map reset CanCollide liên tục
+task.spawn(function()
+    while true do
+        task.wait(0.05)  -- 20Hz
+        if tg.noclip then
+            local c = pl.Character
+            if c then
+                for _, p in ipairs(c:GetDescendants()) do
+                    if p:IsA("BasePart") and p.CanCollide then
+                        p.CanCollide = false
+                    end
+                end
+            end
+        end
+    end
+end)
+
 -- ==================================================================
 -- ============ POPULATE UI ========================================
 -- ==================================================================
@@ -1019,6 +1042,13 @@ aaTargetBtn.MouseButton1Click:Connect(function() openTargetPicker() end)
 mkTog(pages["COMBAT"],"AUTO ATTACK",false,function(on)
     if on and not aa.target then aaTargetBtn.Text="  > TARGET: chon truoc!" return end
     aa.enabled=on aa.atkSpd=on aa.hoverOn=on
+    if on then aaLastTp = 0 end
+end)
+
+mkSec(pages["COMBAT"],"// HITBOX / RANGE")
+mkSli(pages["COMBAT"],"Hitbox Scale",1,5,1,function(v)
+    hitboxScale = v
+    applyHitbox(v)
 end)
 
 mkSec(pages["PLAYER"],"// PERFORMANCE")
@@ -1034,34 +1064,6 @@ mkBtn(pages["PLAYER"],"RESET CHARACTER",function()
 end)
 mkBtn(pages["PLAYER"],"REJOIN SERVER",function()
     pcall(function() TS:TeleportToPlaceInstance(game.PlaceId,game.JobId,pl) end)
-end)
-
--- ==================================================================
--- ============ TAB TELE ===========================================
--- ==================================================================
-mkSec(pages["TELE"],"// SPAWN SYSTEM (BASE)")
-local spawnStatusBtn = mkBtn(pages["TELE"], spawnData.savedCF and "SPAWN: [SAVED]" or "SPAWN: [EMPTY]", function() end)
-mkBtn(pages["TELE"],"SET SPAWN POINT",function()
-    if setSpawnPoint() then
-        spawnStatusBtn.Text = "  > SPAWN: [SAVED]"
-    end
-end)
-mkBtn(pages["TELE"],"TELEPORT TO SPAWN",function()
-    if tpToSpawn() then
-        stLbl.Text = "[ OK ] Đã teleport về spawn"
-        stLbl.TextColor3 = G
-    else
-        stLbl.Text = "[ ! ] Chưa có spawn"
-        stLbl.TextColor3 = RED
-    end
-end)
-mkTog(pages["TELE"],"AUTO RETURN ON RESPAWN",spawnData.autoReturn,function(on)
-    spawnData.autoReturn = on
-    saveSpawn()
-end)
-mkBtn(pages["TELE"],"CLEAR SPAWN",function()
-    clearSpawn()
-    spawnStatusBtn.Text = "  > SPAWN: [EMPTY]"
 end)
 
 mkSec(pages["TELE"],"// TELEPORT TO PLAYER")
@@ -1094,21 +1096,6 @@ mkBtn(pages["TELE"],"TELEPORT TO PLAYER",function()
     tpCD=false
 end)
 
-mkSec(pages["TELE"],"// QUICK MOVE")
-mkBtn(pages["TELE"],"UP +50m",function()
-    local c=pl.Character
-    if c and c:FindFirstChild("HumanoidRootPart") then
-        teleportTo(c.HumanoidRootPart.Position+Vector3.new(0,50,0))
-    end
-end)
-mkBtn(pages["TELE"],"FORWARD +20m",function()
-    local c=pl.Character
-    if c and c:FindFirstChild("HumanoidRootPart") then
-        teleportTo(c.HumanoidRootPart.Position+c.HumanoidRootPart.CFrame.LookVector*20)
-    end
-end)
-
--- ============ WAYPOINTS (SIMPLE - 8 SLOTS) ============
 mkSec(pages["TELE"],"// WAYPOINTS (8 SLOT)")
 mkSli(pages["TELE"],"WP Height",0,20,wpHeight,function(v) wpHeight=v saveWPs() end)
 
@@ -1226,9 +1213,7 @@ task.spawn(function()
     end
 end)
 
--- ==================================================================
--- ============ INFO TAB ===========================================
--- ==================================================================
+-- INFO TAB
 local infoRoot=Instance.new("Frame",pages["INFO"])
 infoRoot.Size=UDim2.new(1,-8,0,0)
 infoRoot.AutomaticSize=Enum.AutomaticSize.Y
@@ -1336,7 +1321,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v11.6"
+                infoRefs.ver.Text="v11.9"
                 local a={}
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
@@ -1346,8 +1331,8 @@ task.spawn(function()
                 if tg.noclip then table.insert(a,"NOCLIP") end
                 if tg.mapBright then table.insert(a,"BRIGHT") end
                 if tg.fps then table.insert(a,"FPS+") end
-                if spawnData.autoReturn then table.insert(a,"AUTO-SPAWN") end
                 if aa.enabled then table.insert(a,"AA") end
+                if hitboxScale > 1 then table.insert(a,"HITBOX x"..hitboxScale) end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
         end
@@ -1356,7 +1341,7 @@ end)
 
 switchTab("MOVE")
 
--- ============ BOOT + MENU ============
+-- BOOT + MENU
 local titleTarget="> ROOT@NEKO:~$ ./run.sh"
 local bootRunning=false
 local function bootSequence()
@@ -1435,7 +1420,7 @@ UIS.InputEnded:Connect(function(i)
 end)
 main.Position=toggleBtn.Position
 
--- ============ RENDER LOOP ============
+-- RENDER LOOP
 local rT=0
 local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
 local espFrame=0
@@ -1527,7 +1512,6 @@ RS.RenderStepped:Connect(function(dt)
     end
 end)
 
--- Movement Heartbeat
 RS.Heartbeat:Connect(function(dt)
     local c=pl.Character
     if c then
@@ -1580,7 +1564,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v11.6] loaded")
+print("[HACKER NEKO v11.9] loaded")
 
 end)
 
