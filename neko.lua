@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v11.9 ===================================
+-- ============ HACKER NEKO v12.0 — AIMLOCK =========================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -47,6 +47,14 @@ local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
     noclip=false,mapBright=false,fps=false,infJump=false}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
 local hitboxScale = 1
+local aim = {
+    enabled = false,
+    fov = 90,
+    smooth = 0.3,
+    checkTeam = true,
+    holdRMB = false,
+    target = nil,
+}
 local teleportTo
 
 -- WAYPOINT STORAGE
@@ -597,7 +605,7 @@ teleportTo = function(targetPos, opts)
 end
 
 -- ==================================================================
--- ============ FALL DAMAGE PROTECTION (không slow fall) ============
+-- ============ FALL DAMAGE PROTECTION =============================
 -- ==================================================================
 local fallProtectUntil = 0
 local fallLastHp = 0
@@ -616,7 +624,6 @@ local function setupNoFallDmg(char)
     end)
 end
 
--- Window: khi rơi nhanh < -75 studs/s → kích hoạt bảo vệ 2 giây
 RS.Heartbeat:Connect(function()
     local c = pl.Character
     local hr = c and c:FindFirstChild("HumanoidRootPart")
@@ -807,7 +814,7 @@ RS.Heartbeat:Connect(function(dt)
     if aa.atkSpd then aaApplySpeed() end
 end)
 
--- Auto attack teleport (throttled, không anchored, không spam)
+-- Auto attack teleport (throttled)
 local aaLastTp = 0
 RS.Heartbeat:Connect(function()
     if not aa.enabled or not aa.target or not aa.target.Parent then return end
@@ -826,6 +833,67 @@ RS.Heartbeat:Connect(function()
         hr.AssemblyLinearVelocity = Vector3.zero
         hr.AssemblyAngularVelocity = Vector3.zero
         aaLastTp = now
+    end
+end)
+
+-- ==================================================================
+-- ============ AIMLOCK (kẻ địch gần nhất) =========================
+-- ==================================================================
+local function isEnemyForAim(p)
+    if p == pl then return false end
+    if not p.Character then return false end
+    local h = p.Character:FindFirstChildOfClass("Humanoid")
+    if not h or h.Health <= 0 then return false end
+    if aim.checkTeam then
+        if pl.Team and p.Team and pl.Team == p.Team then
+            return false
+        end
+    end
+    return true
+end
+
+local function findAimTarget()
+    local camPos = cam.CFrame.Position
+    local camLook = cam.CFrame.LookVector
+    local bestTarget, bestScore = nil, math.huge
+    for _, p in ipairs(P:GetPlayers()) do
+        if isEnemyForAim(p) then
+            local head = p.Character:FindFirstChild("Head")
+            if head then
+                local dir = head.Position - camPos
+                local dist = dir.Magnitude
+                if dist > 0.5 and dist < 1500 then
+                    local dot = math.clamp(camLook.Unit:Dot(dir.Unit), -1, 1)
+                    local angle = math.deg(math.acos(dot))
+                    if angle <= aim.fov / 2 then
+                        local score = dist + angle * 3
+                        if score < bestScore then
+                            bestScore = score
+                            bestTarget = head
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return bestTarget
+end
+
+RS.RenderStepped:Connect(function(dt)
+    local active = aim.enabled
+    if active and aim.holdRMB then
+        active = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    end
+    if not active then
+        aim.target = nil
+        return
+    end
+    local target = findAimTarget()
+    aim.target = target
+    if target then
+        local camPos = cam.CFrame.Position
+        local desiredCF = CFrame.lookAt(camPos, target.Position)
+        cam.CFrame = cam.CFrame:Lerp(desiredCF, math.clamp(aim.smooth, 0.01, 1))
     end
 end)
 
@@ -989,10 +1057,9 @@ function setNoclip(on)
     end
 end
 
--- Noclip watchdog: chống map reset CanCollide liên tục
 task.spawn(function()
     while true do
-        task.wait(0.05)  -- 20Hz
+        task.wait(0.05)
         if tg.noclip then
             local c = pl.Character
             if c then
@@ -1050,6 +1117,13 @@ mkSli(pages["COMBAT"],"Hitbox Scale",1,5,1,function(v)
     hitboxScale = v
     applyHitbox(v)
 end)
+
+mkSec(pages["COMBAT"],"// AIMLOCK")
+mkTog(pages["COMBAT"],"AIMLOCK (gần nhất)",false,function(on) aim.enabled=on end)
+mkTog(pages["COMBAT"],"CHỈ AIM KHI GIỮ CHUỘT PHẢI",false,function(on) aim.holdRMB=on end)
+mkTog(pages["COMBAT"],"BỎ QUA ĐỒNG ĐỘI",true,function(on) aim.checkTeam=on end)
+mkSli(pages["COMBAT"],"Aim FOV (độ)",15,180,90,function(v) aim.fov=v end)
+mkSli(pages["COMBAT"],"Aim Smooth",0.05,1,0.3,function(v) aim.smooth=v end)
 
 mkSec(pages["PLAYER"],"// PERFORMANCE")
 mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on setFPS(on) end)
@@ -1321,7 +1395,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v11.9"
+                infoRefs.ver.Text="v12.0"
                 local a={}
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
@@ -1333,6 +1407,7 @@ task.spawn(function()
                 if tg.fps then table.insert(a,"FPS+") end
                 if aa.enabled then table.insert(a,"AA") end
                 if hitboxScale > 1 then table.insert(a,"HITBOX x"..hitboxScale) end
+                if aim.enabled then table.insert(a,"AIM") end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
         end
@@ -1564,7 +1639,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v11.9] loaded")
+print("[HACKER NEKO v12.0] loaded")
 
 end)
 
