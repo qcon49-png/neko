@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v11 - FULL FIX + BACKGROUND =============
+-- ============ HACKER NEKO v11.1 - FULLY OPTIMIZED =================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -108,9 +108,6 @@ local dot=Instance.new("Frame",toggleBtn)
 dot.Size=UDim2.new(0,5,0,5) dot.Position=UDim2.new(1,-9,0,4)
 dot.BackgroundColor3=G dot.BorderSizePixel=0 dot.ZIndex=502
 Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
-task.spawn(function()
-    while toggleBtn.Parent do task.wait(0.8) dot.BackgroundTransparency=(dot.BackgroundTransparency==0 and 1 or 0) end
-end)
 
 -- MAIN
 local main=Instance.new("Frame",sg)
@@ -122,19 +119,19 @@ Instance.new("UICorner",main).CornerRadius=UDim.new(0,4)
 local stk=Instance.new("UIStroke",main) stk.Color=G stk.Thickness=1.5
 local stkGlow=Instance.new("UIStroke",main) stkGlow.Color=G stkGlow.Thickness=5 stkGlow.Transparency=0.85
 
+-- RAIN (LIGHT - 4 cols, 18 lines, throttled)
 local rainFrame=Instance.new("Frame",main)
 rainFrame.Size=UDim2.new(1,-4,1,-4) rainFrame.Position=UDim2.new(0,2,0,2)
 rainFrame.BackgroundTransparency=1 rainFrame.ClipsDescendants=true rainFrame.ZIndex=1
 local rainCols={}
-for i=1,8 do
+local RAIN_STR=""
+for j=1,18 do RAIN_STR=RAIN_STR..(math.random()>0.5 and "1" or "0").."\n" end
+for i=1,4 do
     local lbl=Instance.new("TextLabel",rainFrame)
-    lbl.Size=UDim2.new(0,12,0,300) lbl.Position=UDim2.new(0,(i-1)*50,0,0)
-    lbl.BackgroundTransparency=1 lbl.Text="" lbl.Font=Enum.Font.Code lbl.TextSize=11
+    lbl.Size=UDim2.new(0,12,0,200) lbl.Position=UDim2.new(0,(i-1)*100,0,0)
+    lbl.BackgroundTransparency=1 lbl.Text=RAIN_STR lbl.Font=Enum.Font.Code lbl.TextSize=11
     lbl.TextColor3=G2 lbl.TextTransparency=0.92 lbl.TextYAlignment=Enum.TextYAlignment.Top lbl.ZIndex=1
-    local s=""
-    for j=1,60 do s=s..(math.random()>0.5 and "1" or "0").."\n" end
-    lbl.Text=s
-    table.insert(rainCols,{lbl=lbl,offset=math.random()*300,speed=20+math.random()*60})
+    table.insert(rainCols,{lbl=lbl,offset=math.random()*200,speed=20+math.random()*40})
 end
 
 local hd=Instance.new("Frame",main)
@@ -153,13 +150,11 @@ local cursor=Instance.new("TextLabel",hd)
 cursor.Size=UDim2.new(0,10,1,0) cursor.Position=UDim2.new(1,-46,0,0)
 cursor.BackgroundTransparency=1 cursor.Text="█" cursor.Font=Enum.Font.Code cursor.TextSize=11
 cursor.TextColor3=G cursor.ZIndex=112
-task.spawn(function() while main.Parent do task.wait(0.6) cursor.Visible=not cursor.Visible end end)
 
 local cl=Instance.new("TextButton",hd)
 cl.Size=UDim2.new(0,20,0,20) cl.Position=UDim2.new(1,-24,.5,-10)
 cl.BackgroundTransparency=1 cl.Text="✕" cl.Font=Enum.Font.Code cl.TextSize=13
 cl.TextColor3=RED cl.AutoButtonColor=false cl.ZIndex=113
-cl.MouseButton1Click:Connect(function() hideMenu() end)
 
 local sb=Instance.new("Frame",main)
 sb.Size=UDim2.new(0,86,1,-52) sb.Position=UDim2.new(0,6,0,26)
@@ -432,7 +427,7 @@ local fpsGen=0
 local function killOne(o)
     if not o or not o.Parent then return end
     local cls=o.ClassName
-    if cls=="ParticleEmitter" or cls=="Trail" or cls=="Beam" or cls=="Fire" or cls=="Smoke" or cls=="Sparkles" then
+    if cls=="ParticleEmitter" or cls=="Trail" or cls=="Beam" then
         if o.Enabled then table.insert(fpsEffects,{o,"Enabled",true}) o.Enabled=false end
     elseif cls=="PointLight" or cls=="SpotLight" or cls=="SurfaceLight" then
         if o.Enabled then table.insert(fpsEffects,{o,"Enabled",true}) o.Enabled=false end
@@ -498,25 +493,17 @@ local function tMapBright(on)
     if on then
         if not savedLighting then
             savedLighting={
-                Brightness=L.Brightness,
-                ClockTime=L.ClockTime,
-                Ambient=L.Ambient,
-                OutdoorAmbient=L.OutdoorAmbient,
-                FogEnd=L.FogEnd,
-                FogStart=L.FogStart,
-                GlobalShadows=L.GlobalShadows,
-                ExposureCompensation=L.ExposureCompensation,
+                Brightness=L.Brightness, ClockTime=L.ClockTime, Ambient=L.Ambient,
+                OutdoorAmbient=L.OutdoorAmbient, FogEnd=L.FogEnd, FogStart=L.FogStart,
+                GlobalShadows=L.GlobalShadows, ExposureCompensation=L.ExposureCompensation,
             }
         end
         pcall(function()
-            L.Brightness=3
-            L.ClockTime=14
+            L.Brightness=3 L.ClockTime=14
             L.Ambient=Color3.fromRGB(180,180,180)
             L.OutdoorAmbient=Color3.fromRGB(180,180,180)
-            L.FogEnd=100000
-            L.FogStart=100000
-            L.GlobalShadows=false
-            L.ExposureCompensation=0.5
+            L.FogEnd=100000 L.FogStart=100000
+            L.GlobalShadows=false L.ExposureCompensation=0.5
         end)
         for _,v in ipairs(L:GetChildren()) do
             pcall(function()
@@ -543,12 +530,13 @@ local function tMapBright(on)
     end
 end
 
--- ============ BACKGROUND: NO FALL DAMAGE + NEVER FALL INTO VOID ============
+-- ============ BG SAFETY: NO FALL DAMAGE + NO VOID ============
 local lastSafeCF = nil
 local bgConn = nil
+local MAX_FALL = 45
 
 local function setupBgSafety(char)
-    if bgConn then bgConn:Disconnect() end
+    if bgConn then bgConn:Disconnect() bgConn=nil end
     local h = char:WaitForChild("Humanoid", 5)
     if not h then return end
     local hr = char:WaitForChild("HumanoidRootPart", 5)
@@ -558,30 +546,24 @@ local function setupBgSafety(char)
     pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end)
 
     local lastHp = h.Health
-    local fallingTime = 0
-    local wasFalling = false
+    local protectUntil = 0
 
     h.HealthChanged:Connect(function(newHp)
-        if newHp < lastHp and wasFalling then
+        if newHp < lastHp and tick() < protectUntil then
             h.Health = lastHp
             return
         end
         lastHp = h.Health
     end)
 
-    bgConn = RS.Heartbeat:Connect(function(dt)
+    bgConn = RS.Heartbeat:Connect(function()
         if not hr or not hr.Parent then return end
-        local vy = hr.AssemblyLinearVelocity.Y
-        if vy < -35 then
-            wasFalling = true
-            fallingTime = 2
+        local v = hr.AssemblyLinearVelocity
+        if v.Y < -MAX_FALL then
+            hr.AssemblyLinearVelocity = Vector3.new(v.X, -MAX_FALL, v.Z)
+            protectUntil = tick() + 1.5
         end
-        fallingTime = fallingTime - dt
-        if fallingTime <= 0 then wasFalling = false end
-
-        if hr.Position.Y > 5 then
-            lastSafeCF = hr.CFrame
-        end
+        if hr.Position.Y > 5 then lastSafeCF = hr.CFrame end
         if hr.Position.Y < -30 and lastSafeCF then
             pcall(function()
                 hr:SetNetworkOwner(pl)
@@ -594,15 +576,8 @@ local function setupBgSafety(char)
 end
 
 pl.CharacterAdded:Connect(function(c)
-    task.wait(0.4)
+    task.wait(0.3)
     setupBgSafety(c)
-    if tg.espName or tg.espHp or tg.espDist or tg.espBody then
-        task.wait(0.4)
-        for _,p in ipairs(P:GetPlayers()) do
-            if p~=pl and p.Character and not evs[p.Character] then buildESP(p.Character) end
-        end
-        applyESPToggles()
-    end
 end)
 if pl.Character then setupBgSafety(pl.Character) end
 
@@ -829,7 +804,8 @@ local function buildESP(char)
     dataTop.Font=Enum.Font.Code dataTop.TextSize=8 dataTop.TextXAlignment=Enum.TextXAlignment.Center
 
     evs[char]={folder=fold,hl=hl,infoBB=infoBB,nameLbl=nameLbl,distLbl=distLbl,hpBB=hpBB,hpFill=hpFill,
-               fxBB=fxBB,scans=scans,dots=dots,ring=ring,ringStroke=ringStroke,dataTop=dataTop}
+               fxBB=fxBB,scans=scans,dots=dots,ring=ring,ringStroke=ringStroke,dataTop=dataTop,
+               _mCache=nil, _mFrame=0}
 end
 
 local function destroyESP(char)
@@ -848,7 +824,7 @@ local function applyESPToggles()
     end
 end
 
--- ============ NPC ESP + ITEM ESP (FIX) ============
+-- ============ NPC + ITEM ESP ============
 local npcEvs={} local itemEvs={}
 local npcConn=nil local itemConn=nil
 
@@ -884,8 +860,7 @@ local function destroyNPCEsp(model)
     if npcEvs[model] then pcall(function() npcEvs[model].folder:Destroy() end) npcEvs[model]=nil end
 end
 
--- LỌC FURNITURE + CHỈ ESP ITEM CỤ THỂ
-local furnitureKeywords = {"bathub","bathtub","stool","footstool","table","bed","chair","crate","shelf","lamp","door","fence","wall","floor","rug","carpet","window","curtain","desk","cabinet","sofa","couch","bench","sign","tree","bush","rock","poster","picture","frame","mirror","sink","toilet","shower","closet","drawer","bookcase","counter","fridge","oven","stove","microwave","speaker","tv","monitor","wall","roof","pillar","stairs","railing"}
+local furnitureKeywords = {"bathub","bathtub","stool","footstool","table","bed","chair","crate","shelf","lamp","door","fence","wall","floor","rug","carpet","window","curtain","desk","cabinet","sofa","couch","bench","sign","tree","bush","rock","poster","picture","frame","mirror","sink","toilet","shower","closet","drawer","bookcase","counter","fridge","oven","stove","microwave","speaker","tv","monitor","roof","pillar","stairs","railing"}
 local itemKeywords = {"food","apple","bread","soda","medkit","bandage","drink","pistol","rifle","ammo","weapon","knife","axe","sword","supply","meat","fish","soup","bean","juice","cola","coke","bottle","canned","gun","potion","herb","berry","tool"}
 local function isPickable(inst)
     if inst:IsA("Tool") then return true end
@@ -953,9 +928,7 @@ local function scanItems()
             if not tg.espItem then return end
             local o=all[i]
             if o and o.Parent and not itemEvs[o] then
-                if isPickable(o) then
-                    buildItemEsp(o)
-                end
+                if isPickable(o) then buildItemEsp(o) end
             end
             if i%60==0 then task.wait() end
         end
@@ -989,9 +962,7 @@ local function enableItemScan()
         if not tg.espItem then return end
         task.wait(0.15)
         if o.Parent and not itemEvs[o] then
-            if isPickable(o) then
-                buildItemEsp(o)
-            end
+            if isPickable(o) then buildItemEsp(o) end
         end
     end)
 end
@@ -1000,9 +971,10 @@ local function disableItemScan()
     for m in pairs(itemEvs) do destroyItemEsp(m) end
 end
 
+-- cleanup loop (throttled)
 task.spawn(function()
     while true do
-        task.wait(2)
+        task.wait(3)
         if tg.espNPC then
             for m in pairs(npcEvs) do if not m.Parent then destroyNPCEsp(m) end end
         end
@@ -1012,9 +984,10 @@ task.spawn(function()
     end
 end)
 
+-- ESP scan loop (throttled)
 task.spawn(function()
     while true do
-        task.wait(0.6)
+        task.wait(1)
         if tg.espName or tg.espHp or tg.espDist or tg.espBody or tg.espLine then
             for _,p in ipairs(P:GetPlayers()) do
                 if p~=pl and p.Character and not evs[p.Character] then
@@ -1027,12 +1000,10 @@ task.spawn(function()
     end
 end)
 
--- ============ NOCLIP (FIX SMOOTH) ============
+-- ============ NOCLIP (event-based, zero per-frame cost) ============
 local noclipChildConn = nil
 local function applyNoclip(part)
-    if part:IsA("BasePart") then
-        part.CanCollide = false
-    end
+    if part:IsA("BasePart") then part.CanCollide = false end
 end
 local function setNoclipActive(on)
     if noclipChildConn then noclipChildConn:Disconnect() noclipChildConn = nil end
@@ -1047,16 +1018,6 @@ local function setNoclipActive(on)
         end
     end
 end
-RS.Stepped:Connect(function()
-    if not tg.noclip then return end
-    local c = pl.Character
-    if not c then return end
-    for _, p in ipairs(c:GetDescendants()) do
-        if p:IsA("BasePart") then
-            p.CanCollide = false
-        end
-    end
-end)
 pl.CharacterAdded:Connect(function(c)
     if tg.noclip then
         task.wait(0.3)
@@ -1064,62 +1025,96 @@ pl.CharacterAdded:Connect(function(c)
     end
 end)
 
--- ============ AUTO PICKUP ============
-task.spawn(function()
-    while true do
-        task.wait(0.4)
-        if tg.autoPick then
-            local c=pl.Character
-            local hr=c and c:FindFirstChild("HumanoidRootPart")
-            if hr then
-                local nearby={}
-                for inst in pairs(itemEvs) do
-                    if inst.Parent and itemEvs[inst].target and itemEvs[inst].target.Parent then
-                        local pos=itemEvs[inst].target.Position
-                        if (pos-hr.Position).Magnitude<12 then
-                            table.insert(nearby,itemEvs[inst].target)
-                        end
+-- ============ AUTO PICKUP (WALK THROUGH - Touched events) ============
+local autoPickConns = {}
+local autoPickAddedConn = nil
+
+local function tryPickup(part)
+    if not part or not part.Parent then return end
+    local c = pl.Character
+    local hr = c and c:FindFirstChild("HumanoidRootPart")
+    if not hr then return end
+    pcall(function()
+        if firetouchinterest then
+            firetouchinterest(hr, part, 0)
+            firetouchinterest(hr, part, 1)
+        end
+    end)
+    if c then
+        for _, op in ipairs(c:GetChildren()) do
+            if op:IsA("BasePart") then
+                pcall(function()
+                    if firetouchinterest then
+                        firetouchinterest(op, part, 0)
+                        firetouchinterest(op, part, 1)
                     end
-                end
-                if #nearby==0 then
-                    for _,o in ipairs(workspace:GetDescendants()) do
-                        if isPickable(o) then
-                            local part = o:IsA("BasePart") and o or o:FindFirstChildWhichIsA("BasePart",true)
-                            if part and part.Parent and (part.Position-hr.Position).Magnitude<12 then
-                                table.insert(nearby,part)
-                            end
-                        end
-                    end
-                end
-                for _,part in ipairs(nearby) do
-                    pcall(function()
-                        if firetouchinterest then
-                            firetouchinterest(hr,part,0)
-                            task.wait()
-                            firetouchinterest(hr,part,1)
-                        end
-                        if firetouchinterest then
-                            for _,op in ipairs(c:GetDescendants()) do
-                                if op:IsA("BasePart") then
-                                    pcall(function()
-                                        firetouchinterest(op,part,0)
-                                        firetouchinterest(op,part,1)
-                                    end)
-                                end
-                            end
-                        end
-                        if fireproximityprompt then
-                            local pp=part:FindFirstChildOfClass("ProximityPrompt")
-                            if pp then fireproximityprompt(pp) end
-                        end
-                    end)
-                end
+                end)
             end
         end
     end
-end)
+    local pp = part:FindFirstChildOfClass("ProximityPrompt")
+    if pp and fireproximityprompt then pcall(fireproximityprompt, pp) end
+end
 
--- ============ ANTI AFK / TRAIL ============
+local function attachPickup(inst)
+    if not tg.autoPick then return end
+    if not isPickable(inst) then return end
+    local part = inst:IsA("BasePart") and inst or inst:FindFirstChildWhichIsA("BasePart", true)
+    if not part or autoPickConns[part] then return end
+
+    local conn = part.Touched:Connect(function(hit)
+        if not tg.autoPick then return end
+        local c = pl.Character
+        if c and hit and hit:IsDescendantOf(c) then
+            tryPickup(part)
+        end
+    end)
+    autoPickConns[part] = conn
+end
+
+local function scanPickupNearby()
+    if not tg.autoPick then return end
+    task.spawn(function()
+        local c = pl.Character
+        local hr = c and c:FindFirstChild("HumanoidRootPart")
+        if not hr then return end
+        local all = workspace:GetDescendants()
+        for i = 1, #all do
+            if not tg.autoPick then return end
+            local o = all[i]
+            if o and o.Parent and not autoPickConns[o] then
+                if o:IsA("Tool") or o:IsA("Model") or o:IsA("BasePart") then
+                    if isPickable(o) then
+                        local part = o:IsA("BasePart") and o or o:FindFirstChildWhichIsA("BasePart", true)
+                        if part and part.Parent then
+                            local d = (part.Position - hr.Position).Magnitude
+                            if d < 200 then attachPickup(o) end
+                        end
+                    end
+                end
+            end
+            if i % 60 == 0 then task.wait() end
+        end
+    end)
+end
+
+local function setAutoPick(on)
+    for _, conn in pairs(autoPickConns) do
+        pcall(function() conn:Disconnect() end)
+    end
+    autoPickConns = {}
+    if autoPickAddedConn then autoPickAddedConn:Disconnect() autoPickAddedConn = nil end
+    if on then
+        scanPickupNearby()
+        autoPickAddedConn = workspace.DescendantAdded:Connect(function(o)
+            if not tg.autoPick then return end
+            task.wait(0.1)
+            if o and o.Parent and isPickable(o) then attachPickup(o) end
+        end)
+    end
+end
+
+-- ============ ANTI AFK ============
 task.spawn(function()
     while true do
         task.wait(20)
@@ -1129,6 +1124,8 @@ task.spawn(function()
         end
     end
 end)
+
+-- ============ TRAIL ============
 local trailCache=nil local trailAtts={}
 RS.Heartbeat:Connect(function()
     local c=pl.Character if not c then trailCache=nil return end
@@ -1214,7 +1211,7 @@ mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on tMapBright
 mkSec(pages["PLAYER"],"// SURVIVAL")
 mkTog(pages["PLAYER"],"ANTI AFK",false,function(on) tg.antiAFK=on end)
 mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclipActive(on) end)
-mkTog(pages["PLAYER"],"AUTO PICKUP (12m)",false,function(on) tg.autoPick=on end)
+mkTog(pages["PLAYER"],"AUTO PICKUP (đi qua = nhặt)",false,function(on) tg.autoPick=on setAutoPick(on) end)
 mkSec(pages["PLAYER"],"// EFFECT")
 mkTog(pages["PLAYER"],"TRAIL RAINBOW",false,function(on) tg.trail=on end)
 mkSec(pages["PLAYER"],"// CAMERA")
@@ -1393,12 +1390,14 @@ local fpsHist={}
 local stT=tick()
 local frmCnt=0
 RS.RenderStepped:Connect(function() frmCnt=frmCnt+1 end)
+
 task.spawn(function()
     while true do
+        task.wait(1.5)
         if pages["INFO"] and pages["INFO"].Visible then
-            local fps=frmCnt*2 frmCnt=0
+            local fps=math.floor(frmCnt/1.5) frmCnt=0
             table.insert(fpsHist,fps)
-            if #fpsHist>30 then table.remove(fpsHist,1) end
+            if #fpsHist>20 then table.remove(fpsHist,1) end
             local sum=0
             for _,v in ipairs(fpsHist) do sum=sum+v end
             local avg=#fpsHist>0 and math.floor(sum/#fpsHist) or 0
@@ -1411,7 +1410,7 @@ task.spawn(function()
                 infoRefs.ping.Text=ping.." ms"
                 infoRefs.pStat.Text=stTxt
                 infoRefs.pStat.TextColor3=stCol
-                infoRefs.fps.Text=math.floor(fps).." fps"
+                infoRefs.fps.Text=fps.." fps"
                 infoRefs.fpsAvg.Text=avg.." fps"
                 infoRefs.mem.Text=(function() local ok,m=pcall(function() return ST:GetTotalMemoryUsageMb() end) return ok and m and math.floor(m).." MB" or "--" end)()
                 local u=math.floor(tick()-stT)
@@ -1431,7 +1430,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v11.0"
+                infoRefs.ver.Text="v11.1"
                 local a={}
                 if tg.hover then table.insert(a,"HOVER") end
                 if tg.espLine then table.insert(a,"LINE") end
@@ -1451,32 +1450,24 @@ task.spawn(function()
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
         end
-        task.wait(0.5)
     end
 end)
 
 switchTab("MOVE")
 
 -- BOOT
-local BOOT_LINES={"> init kernel...","> load modules [OK]","> bypass AC...","> inject payload...","> conn established"}
 local titleTarget="> ROOT@NEKO:~$ ./run.sh"
 local bootRunning=false
-local function typewriter(txt,lbl,spd,done)
-    task.spawn(function()
-        lbl.Text=""
-        for i=1,#txt do lbl.Text=string.sub(txt,1,i) task.wait(spd) end
-        if done then done() end
-    end)
-end
 local function bootSequence()
     if bootRunning then return end
     bootRunning=true
-    for _,line in ipairs(BOOT_LINES) do
-        stLbl.Text=line stLbl.TextColor3=G task.wait(0.08)
-    end
+    stLbl.Text="> init kernel... [OK]"
+    task.wait(0.15)
     stLbl.Text="[ OK ] ready"
-    typewriter(titleTarget,title,0.015)
-    task.wait(0.1)
+    task.spawn(function()
+        title.Text=""
+        for i=1,#titleTarget do title.Text=string.sub(titleTarget,1,i) task.wait(0.012) end
+    end)
     bootRunning=false
 end
 
@@ -1486,22 +1477,46 @@ local function showMenu()
     menuOpen=true
     main.Visible=true
     main.Size=UDim2.new(0,0,0,0) main.BackgroundTransparency=1
-    T:Create(main,TweenInfo.new(0.25,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
+    T:Create(main,TweenInfo.new(0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
         Size=UDim2.new(0,420,0,340), BackgroundTransparency=0.05
     }):Play()
     stk.Transparency=1
-    T:Create(stk,TweenInfo.new(0.3),{Transparency=0}):Play()
+    T:Create(stk,TweenInfo.new(0.25),{Transparency=0}):Play()
     bootSequence()
 end
-function hideMenu()
+local function hideMenu()
     if not menuOpen then return end
     menuOpen=false
-    local tw=T:Create(main,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{
+    local tw=T:Create(main,TweenInfo.new(0.18,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{
         Size=UDim2.new(0,0,0,0), BackgroundTransparency=1
     })
     tw:Play()
     tw.Completed:Connect(function() main.Visible=false end)
 end
+cl.MouseButton1Click:Connect(hideMenu)
+
+-- ONE throttled animation loop (rain + glow + cursor) - 16fps visual, 0 lag
+task.spawn(function()
+    local tGlow = 0
+    local tCursor = 0
+    while true do
+        task.wait(0.06)
+        tGlow = tGlow + 0.06
+        tCursor = tCursor + 0.06
+        tglGlow.Transparency = 0.7 + math.abs(math.sin(tGlow * 2)) * 0.2
+        if menuOpen then
+            for _,c in ipairs(rainCols) do
+                c.offset = c.offset + c.speed * 0.12
+                if c.offset > 200 then c.offset = -200 end
+                c.lbl.Position = UDim2.new(c.lbl.Position.X.Scale, c.lbl.Position.X.Offset, 0, c.offset)
+            end
+            if tCursor >= 0.6 then
+                tCursor = 0
+                cursor.Visible = not cursor.Visible
+            end
+        end
+    end
+end)
 
 local dragging=false local dragStart,dragStartPos local moved=false
 toggleBtn.InputBegan:Connect(function(i)
@@ -1525,21 +1540,17 @@ UIS.InputEnded:Connect(function(i)
 end)
 main.Position=toggleBtn.Position
 
--- RENDER LOOP
+-- RENDER LOOP (ESP only, no rain, no glow)
 local rT=0
 local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
+local espFrame=0
+
 RS.RenderStepped:Connect(function(dt)
     rT=tick()
-    if menuOpen then
-        for _,c in ipairs(rainCols) do
-            c.offset=c.offset+c.speed*dt*2
-            if c.offset>300 then c.offset=-300 end
-            c.lbl.Position=UDim2.new(c.lbl.Position.X.Scale,c.lbl.Position.X.Offset,0,c.offset)
-        end
-    end
-    tglGlow.Transparency=0.7+math.abs(math.sin(rT*2))*0.2
+    espFrame=espFrame+1
 
-    if tg.espLine and drawingAvailable then
+    -- Rainbow lines (throttled to ~30fps internally via check)
+    if tg.espLine and drawingAvailable and (espFrame % 2 == 0) then
         local ct2=Vector2.new(cam.ViewportSize.X/2,0)
         local rb=Color3.fromHSV(rT%4/4,1,1)
         for _,p in ipairs(P:GetPlayers()) do
@@ -1565,6 +1576,7 @@ RS.RenderStepped:Connect(function(dt)
         trcs={}
     end
 
+    -- Player ESP
     if tg.espName or tg.espHp or tg.espDist or tg.espBody then
         local myChar=pl.Character
         local myHR=myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -1587,7 +1599,12 @@ RS.RenderStepped:Connect(function(dt)
                         else data.hpFill.BackgroundColor3=RED end
                     end
                     if tg.espBody then
-                        local m=measureBody(char)
+                        data._mFrame = data._mFrame + 1
+                        if data._mFrame >= 20 or not data._mCache then
+                            data._mCache = measureBody(char)
+                            data._mFrame = 0
+                        end
+                        local m = data._mCache
                         if m then
                             data.fxBB.StudsOffset=Vector3.new(0,m.center,0)
                             local dist=(cam.CFrame.Position-hr2.Position).Magnitude
@@ -1619,6 +1636,7 @@ RS.RenderStepped:Connect(function(dt)
         end
     end
 
+    -- Aimlock
     if tg.aimE or tg.aimA then
         local c=pl.Character
         if c and c:FindFirstChild("HumanoidRootPart") then
@@ -1652,37 +1670,35 @@ end)
 
 -- Movement Heartbeat
 RS.Heartbeat:Connect(function(dt)
-    pcall(function()
-        local c=pl.Character
-        if c then
-            local h=c:FindFirstChildOfClass("Humanoid")
-            local hr=c:FindFirstChild("HumanoidRootPart")
-            if h and hr and h.Health>0 then
-                if not tg.hover then
-                    if stt.ws>16 then
-                        h.WalkSpeed=stt.ws
-                        if h.MoveDirection.Magnitude>.1 then
-                            local v=h.MoveDirection.Unit*stt.ws
-                            hr.AssemblyLinearVelocity=Vector3.new(v.X,hr.AssemblyLinearVelocity.Y,v.Z)
-                        end
-                    else h.WalkSpeed=16 end
-                end
-                if stt.jp>50 then h.UseJumpPower=true h.JumpPower=stt.jp end
-                if tg.hover then
-                    h.HipHeight=stt.hh
-                    h:SetStateEnabled(Enum.HumanoidStateType.Falling,false)
-                    h:SetStateEnabled(Enum.HumanoidStateType.Freefall,false)
-                    h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,false)
-                    pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end)
-                else
-                    if h.HipHeight>2 then h.HipHeight=2 end
-                    h:SetStateEnabled(Enum.HumanoidStateType.Falling,true)
-                    h:SetStateEnabled(Enum.HumanoidStateType.Freefall,true)
-                    h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,true)
-                end
+    local c=pl.Character
+    if c then
+        local h=c:FindFirstChildOfClass("Humanoid")
+        local hr=c:FindFirstChild("HumanoidRootPart")
+        if h and hr and h.Health>0 then
+            if not tg.hover then
+                if stt.ws>16 then
+                    h.WalkSpeed=stt.ws
+                    if h.MoveDirection.Magnitude>.1 then
+                        local v=h.MoveDirection.Unit*stt.ws
+                        hr.AssemblyLinearVelocity=Vector3.new(v.X,hr.AssemblyLinearVelocity.Y,v.Z)
+                    end
+                else h.WalkSpeed=16 end
+            end
+            if stt.jp>50 then h.UseJumpPower=true h.JumpPower=stt.jp end
+            if tg.hover then
+                h.HipHeight=stt.hh
+                h:SetStateEnabled(Enum.HumanoidStateType.Falling,false)
+                h:SetStateEnabled(Enum.HumanoidStateType.Freefall,false)
+                h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,false)
+                pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end)
+            else
+                if h.HipHeight>2 then h.HipHeight=2 end
+                h:SetStateEnabled(Enum.HumanoidStateType.Falling,true)
+                h:SetStateEnabled(Enum.HumanoidStateType.Freefall,true)
+                h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,true)
             end
         end
-    end)
+    end
 end)
 
 UIS.JumpRequest:Connect(function()
@@ -1708,14 +1724,19 @@ for _,p in ipairs(P:GetPlayers()) do
 end
 applyESPToggles()
 
+-- FPS display (2s interval, no lag)
 task.spawn(function()
     while true do
-        task.wait(1)
-        pcall(function() fpsLbl.Text=math.floor(frmCnt).." FPS" frmCnt=0 end)
+        task.wait(2)
+        pcall(function()
+            local f = math.floor(frmCnt/2)
+            fpsLbl.Text=f.." FPS"
+            frmCnt=0
+        end)
     end
 end)
 
-print("[HACKER NEKO v11] loaded - FULL FIX + BACKGROUND")
+print("[HACKER NEKO v11.1] loaded - FULLY OPTIMIZED")
 
 end)
 
