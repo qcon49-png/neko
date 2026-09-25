@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v12 - TELE FIX + FULL MAP ==============
+-- ============ HACKER NEKO v11 - FULL FIX + BACKGROUND =============
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -426,7 +426,7 @@ local function mkBtn(parent,name,cb)
     return b
 end
 
--- FPS BOOST
+-- ============ FPS BOOST ============
 local fpsParts={} local fpsEffects={}
 local fpsGen=0
 local function killOne(o)
@@ -466,7 +466,11 @@ local function tFPS(on)
         pcall(function() if setfpscap then setfpscap(144) end end)
         pcall(function()
             local t=workspace:FindFirstChildOfClass("Terrain")
-            if t then t.WaterWaveSize=0 t.WaterReflectance=0 t.WaterTransparency=1 end
+            if t then
+                t.WaterWaveSize=0
+                t.WaterReflectance=0
+                t.WaterTransparency=1
+            end
         end)
         task.spawn(function()
             local all=workspace:GetDescendants()
@@ -488,23 +492,31 @@ local function tFPS(on)
     end
 end
 
--- MAP BRIGHT
+-- ============ MAP BRIGHT ============
 local savedLighting=nil
 local function tMapBright(on)
     if on then
         if not savedLighting then
             savedLighting={
-                Brightness=L.Brightness, ClockTime=L.ClockTime, Ambient=L.Ambient,
-                OutdoorAmbient=L.OutdoorAmbient, FogEnd=L.FogEnd, FogStart=L.FogStart,
-                GlobalShadows=L.GlobalShadows, ExposureCompensation=L.ExposureCompensation,
+                Brightness=L.Brightness,
+                ClockTime=L.ClockTime,
+                Ambient=L.Ambient,
+                OutdoorAmbient=L.OutdoorAmbient,
+                FogEnd=L.FogEnd,
+                FogStart=L.FogStart,
+                GlobalShadows=L.GlobalShadows,
+                ExposureCompensation=L.ExposureCompensation,
             }
         end
         pcall(function()
-            L.Brightness=3 L.ClockTime=14
+            L.Brightness=3
+            L.ClockTime=14
             L.Ambient=Color3.fromRGB(180,180,180)
             L.OutdoorAmbient=Color3.fromRGB(180,180,180)
-            L.FogEnd=100000 L.FogStart=100000
-            L.GlobalShadows=false L.ExposureCompensation=0.5
+            L.FogEnd=100000
+            L.FogStart=100000
+            L.GlobalShadows=false
+            L.ExposureCompensation=0.5
         end)
         for _,v in ipairs(L:GetChildren()) do
             pcall(function()
@@ -531,37 +543,51 @@ local function tMapBright(on)
     end
 end
 
--- BACKGROUND NO FALL DAMAGE + ANTI VOID
-local lastSafeCF=nil
-local voidConn=nil
-local function setupAntiVoidAndNoFall(char)
-    if voidConn then voidConn:Disconnect() end
-    local h=char:WaitForChild("Humanoid",5)
+-- ============ BACKGROUND: NO FALL DAMAGE + NEVER FALL INTO VOID ============
+local lastSafeCF = nil
+local bgConn = nil
+
+local function setupBgSafety(char)
+    if bgConn then bgConn:Disconnect() end
+    local h = char:WaitForChild("Humanoid", 5)
     if not h then return end
-    local hr=char:WaitForChild("HumanoidRootPart",5)
+    local hr = char:WaitForChild("HumanoidRootPart", 5)
     if not hr then return end
+
     pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) end)
-    local lastHp=h.Health
-    local isRestoring=false
+    pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end)
+
+    local lastHp = h.Health
+    local fallingTime = 0
+    local wasFalling = false
+
     h.HealthChanged:Connect(function(newHp)
-        if isRestoring then return end
-        if newHp<lastHp then
-            local state=h:GetState()
-            if state==Enum.HumanoidStateType.Freefall or state==Enum.HumanoidStateType.FallingDown or state==Enum.HumanoidStateType.Landed then
-                isRestoring=true h.Health=lastHp task.wait() isRestoring=false return
-            end
+        if newHp < lastHp and wasFalling then
+            h.Health = lastHp
+            return
         end
-        lastHp=h.Health
+        lastHp = h.Health
     end)
-    voidConn=RS.Heartbeat:Connect(function()
+
+    bgConn = RS.Heartbeat:Connect(function(dt)
         if not hr or not hr.Parent then return end
-        if hr.Position.Y>5 then lastSafeCF=hr.CFrame end
-        if hr.Position.Y<-50 and lastSafeCF then
+        local vy = hr.AssemblyLinearVelocity.Y
+        if vy < -35 then
+            wasFalling = true
+            fallingTime = 2
+        end
+        fallingTime = fallingTime - dt
+        if fallingTime <= 0 then wasFalling = false end
+
+        if hr.Position.Y > 5 then
+            lastSafeCF = hr.CFrame
+        end
+        if hr.Position.Y < -30 and lastSafeCF then
             pcall(function()
                 hr:SetNetworkOwner(pl)
-                char:PivotTo(lastSafeCF+Vector3.new(0,10,0))
-                hr.AssemblyLinearVelocity=Vector3.zero
-                hr.AssemblyAngularVelocity=Vector3.zero
+                char:PivotTo(lastSafeCF + Vector3.new(0, 5, 0))
+                hr.AssemblyLinearVelocity = Vector3.zero
+                hr.AssemblyAngularVelocity = Vector3.zero
             end)
         end
     end)
@@ -569,7 +595,7 @@ end
 
 pl.CharacterAdded:Connect(function(c)
     task.wait(0.4)
-    setupAntiVoidAndNoFall(c)
+    setupBgSafety(c)
     if tg.espName or tg.espHp or tg.espDist or tg.espBody then
         task.wait(0.4)
         for _,p in ipairs(P:GetPlayers()) do
@@ -578,9 +604,9 @@ pl.CharacterAdded:Connect(function(c)
         applyESPToggles()
     end
 end)
-if pl.Character then setupAntiVoidAndNoFall(pl.Character) end
+if pl.Character then setupBgSafety(pl.Character) end
 
--- ATTACK REMOTES
+-- ============ ATTACK REMOTES ============
 local attackRemotes={}
 local function scanAttackRemotes()
     local tmp={}
@@ -632,7 +658,7 @@ local function fireAttack()
     end
 end
 
--- AUTO ATTACK
+-- ============ AUTO ATTACK ============
 local function aaApplySpeed()
     local c=pl.Character if not c then return end
     for _,v in ipairs(c:GetDescendants()) do
@@ -679,101 +705,28 @@ RS.Heartbeat:Connect(function(dt)
     if aa.atkSpd then aaApplySpeed() end
 end)
 
--- ================================================================
--- ==================== TELEPORT v12 (ROBUST) =====================
--- ================================================================
--- Đặc điểm:
---  - Freeze humanoid states trong lúc teleport (chống fall damage / snap back)
---  - Ray cast xuống tìm ground → đặt Y đúng (chống rớt xuống đất)
---  - Spam CFrame + PivotTo 20 frame (0.3s) chống anti-cheat pull-back
---  - SetNetworkOwner(pl) để giành quyền kiểm soát
---  - Tự chia step nếu khoảng cách > 500 stud (chống streaming drop)
--- ================================================================
-local function findGroundY(x, z, yHint)
-    local origin = Vector3.new(x, (yHint or 500) + 200, z)
-    local dir = Vector3.new(0, -1, 0)
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {pl.Character}
-    local result = workspace:Raycast(origin, dir * 5000, params)
-    if result then
-        return result.Position.Y + 3.5, result.Instance
-    end
-    return nil, nil
-end
-
-teleportTo = function(targetPos)
-    local c = pl.Character
-    if not c then return end
-    local hr = c:FindFirstChild("HumanoidRootPart")
-    if not hr then return end
-    local h = c:FindFirstChildOfClass("Humanoid")
-    if not h then return end
-
-    -- Tìm ground Y nếu target Y không hợp lệ (quá cao/thấp)
-    local targetX, targetY, targetZ = targetPos.X, targetPos.Y, targetPos.Z
-    local groundY = findGroundY(targetX, targetZ, targetY)
-    if groundY and math.abs(targetY - groundY) > 3 then
-        -- Nếu Y hiện tại cách ground > 5 stud → dùng ground Y
-        if targetY > groundY + 20 or targetY < groundY - 20 then
-            targetY = groundY
-        end
-    end
-    local finalPos = Vector3.new(targetX, targetY, targetZ)
-    local target = CFrame.new(finalPos)
-
-    -- Lưu state để khôi phục
-    local statesToDisable = {
-        Enum.HumanoidStateType.FallingDown,
-        Enum.HumanoidStateType.Ragdoll,
-        Enum.HumanoidStateType.PlatformStanding,
-        Enum.HumanoidStateType.Freefall,
-    }
-    local saved = {}
-    for i, st in ipairs(statesToDisable) do
-        pcall(function() saved[i] = h:GetStateEnabled(st) end)
-        pcall(function() h:SetStateEnabled(st, false) end)
-    end
-
-    -- Giành quyền kiểm soát
+-- ============ TELEPORT ============
+teleportTo=function(targetPos)
+    local c=pl.Character if not c then return end
+    local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return end
+    local target=CFrame.new(targetPos)
     pcall(function() hr:SetNetworkOwner(pl) end)
-
-    -- Chia step nếu xa > 500 stud (tránh streaming drop)
-    local dist = (hr.Position - finalPos).Magnitude
-    local steps = math.clamp(math.ceil(dist / 500), 1, 8)
-
+    hr.AssemblyLinearVelocity=Vector3.zero
+    hr.AssemblyAngularVelocity=Vector3.zero
+    pcall(function() c:PivotTo(target) end)
+    pcall(function() hr.CFrame=target end)
     task.spawn(function()
-        for s = 1, steps do
-            if not hr.Parent or not c.Parent then break end
-            local alpha = s / steps
-            local stepPos = hr.Position:Lerp(finalPos, 1 / (steps - s + 1))
-            local stepCF = CFrame.new(stepPos)
-            pcall(function() c:PivotTo(stepCF) end)
-            pcall(function() hr.CFrame = stepCF end)
-            hr.AssemblyLinearVelocity = Vector3.zero
-            hr.AssemblyAngularVelocity = Vector3.zero
-            task.wait(0.05)
-        end
-
-        -- Spam CFrame 20 frame tại đích
-        for i = 1, 20 do
-            if not hr.Parent or not c.Parent or h.Health <= 0 then break end
-            pcall(function() c:PivotTo(target) end)
-            pcall(function() hr.CFrame = target end)
-            hr.AssemblyLinearVelocity = Vector3.zero
-            hr.AssemblyAngularVelocity = Vector3.zero
+        for i=1,4 do
             task.wait()
-        end
-
-        -- Khôi phục state
-        for i, st in ipairs(statesToDisable) do
-            if saved[i] ~= nil then
-                pcall(function() h:SetStateEnabled(st, saved[i]) end)
-            end
+            if not hr or not hr.Parent then return end
+            pcall(function()
+                hr.CFrame=target
+                hr.AssemblyLinearVelocity=Vector3.zero
+                hr.AssemblyAngularVelocity=Vector3.zero
+            end)
         end
     end)
 end
-
 RS.Heartbeat:Connect(function()
     if not aa.hoverOn or not aa.target or not aa.target.Parent then return end
     local tc=aa.target.Character if not tc then return end
@@ -782,7 +735,7 @@ RS.Heartbeat:Connect(function()
     teleportTo(predicted+Vector3.new(0,aa.hoverDist,0))
 end)
 
--- ESP PLAYER
+-- ============ ESP PLAYER ============
 local evs={} local trcs={}
 
 local function measureBody(char)
@@ -830,6 +783,7 @@ local function buildESP(char)
     hpBB.Adornee=hr hpBB.Size=UDim2.new(0,12,0,70) hpBB.StudsOffset=Vector3.new(2.3,0.5,0)
     hpBB.AlwaysOnTop=true hpBB.LightInfluence=0 hpBB.MaxDistance=5000
     hpBB.Enabled=tg.espHp
+
     local hpBg=Instance.new("Frame",hpBB)
     hpBg.Size=UDim2.new(1,0,1,0) hpBg.BackgroundColor3=Color3.fromRGB(0,20,10)
     hpBg.BackgroundTransparency=0.2 hpBg.BorderSizePixel=1 hpBg.BorderColor3=G
@@ -877,6 +831,7 @@ local function buildESP(char)
     evs[char]={folder=fold,hl=hl,infoBB=infoBB,nameLbl=nameLbl,distLbl=distLbl,hpBB=hpBB,hpFill=hpFill,
                fxBB=fxBB,scans=scans,dots=dots,ring=ring,ringStroke=ringStroke,dataTop=dataTop}
 end
+
 local function destroyESP(char)
     if evs[char] then pcall(function() evs[char].folder:Destroy() end) evs[char]=nil end
 end
@@ -893,18 +848,24 @@ local function applyESPToggles()
     end
 end
 
--- NPC / ITEM ESP
+-- ============ NPC ESP + ITEM ESP (FIX) ============
 local npcEvs={} local itemEvs={}
 local npcConn=nil local itemConn=nil
+
 local function isPlayerCharacter(model)
     if not model then return false end
-    for _,p in ipairs(P:GetPlayers()) do if p.Character==model then return true end end
+    for _,p in ipairs(P:GetPlayers()) do
+        if p.Character==model then return true end
+    end
     return false
 end
+
 local function buildNPCEsp(model)
     if npcEvs[model] then return end
-    local hr=model:FindFirstChild("HumanoidRootPart") if not hr then return end
-    local hum=model:FindFirstChildOfClass("Humanoid") if not hum then return end
+    local hr=model:FindFirstChild("HumanoidRootPart")
+    if not hr then return end
+    local hum=model:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
     local fold=Instance.new("Folder",enf) fold.Name=model.Name
     local hl=Instance.new("Highlight",fold)
     hl.Adornee=model hl.FillColor=RED hl.FillTransparency=0.7 hl.OutlineColor=RED
@@ -922,23 +883,35 @@ end
 local function destroyNPCEsp(model)
     if npcEvs[model] then pcall(function() npcEvs[model].folder:Destroy() end) npcEvs[model]=nil end
 end
+
+-- LỌC FURNITURE + CHỈ ESP ITEM CỤ THỂ
+local furnitureKeywords = {"bathub","bathtub","stool","footstool","table","bed","chair","crate","shelf","lamp","door","fence","wall","floor","rug","carpet","window","curtain","desk","cabinet","sofa","couch","bench","sign","tree","bush","rock","poster","picture","frame","mirror","sink","toilet","shower","closet","drawer","bookcase","counter","fridge","oven","stove","microwave","speaker","tv","monitor","wall","roof","pillar","stairs","railing"}
+local itemKeywords = {"food","apple","bread","soda","medkit","bandage","drink","pistol","rifle","ammo","weapon","knife","axe","sword","supply","meat","fish","soup","bean","juice","cola","coke","bottle","canned","gun","potion","herb","berry","tool"}
 local function isPickable(inst)
     if inst:IsA("Tool") then return true end
-    if inst:IsA("Model") then
-        if inst:FindFirstChildOfClass("ProximityPrompt") or inst:FindFirstChildOfClass("ClickDetector") then return true end
-        if inst:FindFirstChildWhichIsA("Tool", true) then return true end
+    local n = string.lower(inst.Name)
+    for _, k in ipairs(furnitureKeywords) do
+        if n:find(k) then return false end
+    end
+    for _, k in ipairs(itemKeywords) do
+        if n:find(k) then return true end
     end
     return false
 end
+
 local function buildItemEsp(inst)
     if itemEvs[inst] then return end
     local target=inst
-    if inst:IsA("Model") then target=inst:FindFirstChildWhichIsA("BasePart",true)
-    elseif inst:IsA("Tool") then target=inst:FindFirstChild("Handle") or inst:FindFirstChildWhichIsA("BasePart",true) end
+    if inst:IsA("Model") then
+        target=inst:FindFirstChildWhichIsA("BasePart",true)
+    elseif inst:IsA("Tool") then
+        target=inst:FindFirstChild("Handle") or inst:FindFirstChildWhichIsA("BasePart",true)
+    end
     if not target then return end
     local fold=Instance.new("Folder",enf) fold.Name=inst.Name
     local hl=Instance.new("Highlight",fold)
-    hl.Adornee=inst hl.FillColor=YEL hl.FillTransparency=0.6 hl.OutlineColor=YEL
+    hl.Adornee=inst
+    hl.FillColor=YEL hl.FillTransparency=0.6 hl.OutlineColor=YEL
     hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
     local bb=Instance.new("BillboardGui",fold)
     bb.Adornee=target bb.Size=UDim2.new(0,120,0,20) bb.StudsOffset=Vector3.new(0,1.5,0)
@@ -953,6 +926,7 @@ end
 local function destroyItemEsp(inst)
     if itemEvs[inst] then pcall(function() itemEvs[inst].folder:Destroy() end) itemEvs[inst]=nil end
 end
+
 local function scanNPCs()
     if not tg.espNPC then return end
     task.spawn(function()
@@ -962,12 +936,15 @@ local function scanNPCs()
             local o=all[i]
             if o and o.Parent and o:IsA("Model") and not npcEvs[o] and not evs[o] then
                 local hum=o:FindFirstChildOfClass("Humanoid")
-                if hum and o:FindFirstChild("HumanoidRootPart") and not isPlayerCharacter(o) then buildNPCEsp(o) end
+                if hum and o:FindFirstChild("HumanoidRootPart") and not isPlayerCharacter(o) then
+                    buildNPCEsp(o)
+                end
             end
             if i%60==0 then task.wait() end
         end
     end)
 end
+
 local function scanItems()
     if not tg.espItem then return end
     task.spawn(function()
@@ -975,11 +952,16 @@ local function scanItems()
         for i=1,#all do
             if not tg.espItem then return end
             local o=all[i]
-            if o and o.Parent and not itemEvs[o] and isPickable(o) then buildItemEsp(o) end
+            if o and o.Parent and not itemEvs[o] then
+                if isPickable(o) then
+                    buildItemEsp(o)
+                end
+            end
             if i%60==0 then task.wait() end
         end
     end)
 end
+
 local function enableNPCScan()
     if npcConn then return end
     scanNPCs()
@@ -989,7 +971,9 @@ local function enableNPCScan()
             task.wait(0.15)
             if o.Parent and not npcEvs[o] then
                 local hum=o:FindFirstChildOfClass("Humanoid")
-                if hum and o:FindFirstChild("HumanoidRootPart") and not isPlayerCharacter(o) then buildNPCEsp(o) end
+                if hum and o:FindFirstChild("HumanoidRootPart") and not isPlayerCharacter(o) then
+                    buildNPCEsp(o)
+                end
             end
         end
     end)
@@ -1004,45 +988,83 @@ local function enableItemScan()
     itemConn=workspace.DescendantAdded:Connect(function(o)
         if not tg.espItem then return end
         task.wait(0.15)
-        if o.Parent and not itemEvs[o] and isPickable(o) then buildItemEsp(o) end
+        if o.Parent and not itemEvs[o] then
+            if isPickable(o) then
+                buildItemEsp(o)
+            end
+        end
     end)
 end
 local function disableItemScan()
     if itemConn then itemConn:Disconnect() itemConn=nil end
     for m in pairs(itemEvs) do destroyItemEsp(m) end
 end
+
 task.spawn(function()
     while true do
         task.wait(2)
-        if tg.espNPC then for m in pairs(npcEvs) do if not m.Parent then destroyNPCEsp(m) end end end
-        if tg.espItem then for m in pairs(itemEvs) do if not m.Parent then destroyItemEsp(m) end end
+        if tg.espNPC then
+            for m in pairs(npcEvs) do if not m.Parent then destroyNPCEsp(m) end end
+        end
+        if tg.espItem then
+            for m in pairs(itemEvs) do if not m.Parent then destroyItemEsp(m) end end
+        end
     end
 end)
+
 task.spawn(function()
     while true do
         task.wait(0.6)
         if tg.espName or tg.espHp or tg.espDist or tg.espBody or tg.espLine then
             for _,p in ipairs(P:GetPlayers()) do
                 if p~=pl and p.Character and not evs[p.Character] then
-                    if p.Character:FindFirstChild("HumanoidRootPart") then buildESP(p.Character) end
+                    if p.Character:FindFirstChild("HumanoidRootPart") then
+                        buildESP(p.Character)
+                    end
                 end
             end
         end
     end
 end)
 
--- NOCLIP
+-- ============ NOCLIP (FIX SMOOTH) ============
+local noclipChildConn = nil
+local function applyNoclip(part)
+    if part:IsA("BasePart") then
+        part.CanCollide = false
+    end
+end
+local function setNoclipActive(on)
+    if noclipChildConn then noclipChildConn:Disconnect() noclipChildConn = nil end
+    local c = pl.Character
+    if not c then return end
+    if on then
+        for _, p in ipairs(c:GetDescendants()) do applyNoclip(p) end
+        noclipChildConn = c.DescendantAdded:Connect(applyNoclip)
+    else
+        for _, p in ipairs(c:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+    end
+end
 RS.Stepped:Connect(function()
     if not tg.noclip then return end
-    local c=pl.Character if not c then return end
-    for _,p in ipairs(c:GetDescendants()) do
+    local c = pl.Character
+    if not c then return end
+    for _, p in ipairs(c:GetDescendants()) do
         if p:IsA("BasePart") then
-            p.CanCollide=false p.CanQuery=false p.CanTouch=false
+            p.CanCollide = false
         end
     end
 end)
+pl.CharacterAdded:Connect(function(c)
+    if tg.noclip then
+        task.wait(0.3)
+        setNoclipActive(true)
+    end
+end)
 
--- AUTO PICKUP
+-- ============ AUTO PICKUP ============
 task.spawn(function()
     while true do
         task.wait(0.4)
@@ -1054,27 +1076,34 @@ task.spawn(function()
                 for inst in pairs(itemEvs) do
                     if inst.Parent and itemEvs[inst].target and itemEvs[inst].target.Parent then
                         local pos=itemEvs[inst].target.Position
-                        if (pos-hr.Position).Magnitude<12 then table.insert(nearby,itemEvs[inst].target) end
+                        if (pos-hr.Position).Magnitude<12 then
+                            table.insert(nearby,itemEvs[inst].target)
+                        end
                     end
                 end
                 if #nearby==0 then
                     for _,o in ipairs(workspace:GetDescendants()) do
                         if isPickable(o) then
                             local part = o:IsA("BasePart") and o or o:FindFirstChildWhichIsA("BasePart",true)
-                            if part and part.Parent and (part.Position-hr.Position).Magnitude<12 then table.insert(nearby,part) end
+                            if part and part.Parent and (part.Position-hr.Position).Magnitude<12 then
+                                table.insert(nearby,part)
+                            end
                         end
                     end
                 end
                 for _,part in ipairs(nearby) do
                     pcall(function()
                         if firetouchinterest then
-                            firetouchinterest(hr,part,0) task.wait() firetouchinterest(hr,part,1)
+                            firetouchinterest(hr,part,0)
+                            task.wait()
+                            firetouchinterest(hr,part,1)
                         end
                         if firetouchinterest then
                             for _,op in ipairs(c:GetDescendants()) do
                                 if op:IsA("BasePart") then
                                     pcall(function()
-                                        firetouchinterest(op,part,0) firetouchinterest(op,part,1)
+                                        firetouchinterest(op,part,0)
+                                        firetouchinterest(op,part,1)
                                     end)
                                 end
                             end
@@ -1090,7 +1119,7 @@ task.spawn(function()
     end
 end)
 
--- ANTI AFK / TRAIL
+-- ============ ANTI AFK / TRAIL ============
 task.spawn(function()
     while true do
         task.wait(20)
@@ -1128,7 +1157,7 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- POPULATE UI
+-- ============ POPULATE UI ============
 mkSec(pages["MOVE"],"// SPEED")
 mkSli(pages["MOVE"],"Walk Speed",16,500,16,function(v) stt.ws=v end)
 mkSec(pages["MOVE"],"// JUMP")
@@ -1158,7 +1187,9 @@ local function openTargetPicker()
     for _,p in ipairs(P:GetPlayers()) do
         if p~=pl then
             dlgBtn(p.Name, G, function()
-                aa.target=p aaTargetBtn.Text="  > TARGET: "..p.Name closeDlg()
+                aa.target=p
+                aaTargetBtn.Text="  > TARGET: "..p.Name
+                closeDlg()
             end)
         end
     end
@@ -1167,7 +1198,10 @@ local function openTargetPicker()
 end
 aaTargetBtn.MouseButton1Click:Connect(function() openTargetPicker() end)
 mkTog(pages["COMBAT"],"AUTO ATTACK",false,function(on)
-    if on and not aa.target then aaTargetBtn.Text="  > TARGET: chon truoc!" return end
+    if on and not aa.target then
+        aaTargetBtn.Text="  > TARGET: chon truoc!"
+        return
+    end
     aa.enabled=on aa.atkSpd=on aa.hoverOn=on
 end)
 mkSec(pages["COMBAT"],"// AIMLOCK")
@@ -1179,7 +1213,7 @@ mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on tFPS(on) end)
 mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on tMapBright(on) end)
 mkSec(pages["PLAYER"],"// SURVIVAL")
 mkTog(pages["PLAYER"],"ANTI AFK",false,function(on) tg.antiAFK=on end)
-mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on end)
+mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclipActive(on) end)
 mkTog(pages["PLAYER"],"AUTO PICKUP (12m)",false,function(on) tg.autoPick=on end)
 mkSec(pages["PLAYER"],"// EFFECT")
 mkTog(pages["PLAYER"],"TRAIL RAINBOW",false,function(on) tg.trail=on end)
@@ -1193,9 +1227,6 @@ mkBtn(pages["PLAYER"],"REJOIN SERVER",function()
     pcall(function() TS:TeleportToPlaceInstance(game.PlaceId,game.JobId,pl) end)
 end)
 
--- ================================================================
--- =================== TELE TAB (FULL FIX) ========================
--- ================================================================
 mkSec(pages["TELE"],"// TELEPORT TO PLAYER")
 local tpTargetBtn=mkBtn(pages["TELE"],"SELECT PLAYER",function() end)
 local tpSelected=nil
@@ -1205,7 +1236,9 @@ local function openTpPicker()
     for _,p in ipairs(P:GetPlayers()) do
         if p~=pl then
             dlgBtn(p.Name,G,function()
-                tpSelected=p tpTargetBtn.Text="  > "..p.Name closeDlg()
+                tpSelected=p
+                tpTargetBtn.Text="  > "..p.Name
+                closeDlg()
             end)
         end
     end
@@ -1214,111 +1247,18 @@ local function openTpPicker()
 end
 tpTargetBtn.MouseButton1Click:Connect(function() openTpPicker() end)
 mkSli(pages["TELE"],"TP Height",-10,30,3,function(v) stt.tph=v end)
-
--- Nút tele đến player - dùng full teleportTo mạnh
 local tpCD=false
 mkBtn(pages["TELE"],"TELEPORT TO PLAYER",function()
-    if not tpSelected then
-        stLbl.Text="[ !! ] chon player truoc" return
-    end
-    if tpCD then return end
+    if not tpSelected or tpCD then return end
+    local c=pl.Character
+    local hr=c and c:FindFirstChild("HumanoidRootPart") if not hr then return end
     local th=tpSelected.Character and tpSelected.Character:FindFirstChild("HumanoidRootPart")
-    if not th then
-        stLbl.Text="[ !! ] player chua spawn" return
-    end
+    if not th then return end
     tpCD=true
-    stLbl.Text="[ .. ] teleporting to "..tpSelected.Name
     teleportTo(th.Position+Vector3.new(0,stt.tph,0))
-    task.wait(0.8)
+    task.wait(.5)
     tpCD=false
-    stLbl.Text="[ OK ] teleported"
 end)
-
--- Nút tele đến player - lặp nhiều lần (cực xa)
-mkBtn(pages["TELE"],"TELEPORT x3 (XUYÊN MAP)",function()
-    if not tpSelected then stLbl.Text="[ !! ] chon player truoc" return end
-    task.spawn(function()
-        for i=1,3 do
-            local th=tpSelected.Character and tpSelected.Character:FindFirstChild("HumanoidRootPart")
-            if not th then return end
-            teleportTo(th.Position+Vector3.new(0,stt.tph,0))
-            task.wait(0.6)
-        end
-        stLbl.Text="[ OK ] x3 done"
-    end)
-end)
-
-mkSec(pages["TELE"],"// TELEPORT TO COORDINATES")
-local coordXBox, coordYBox, coordZBox
-local function makeCoordRow()
-    local row=Instance.new("Frame",pages["TELE"])
-    row.Size=UDim2.new(1,-8,0,26) row.BackgroundColor3=BG
-    row.BackgroundTransparency=0.4 row.BorderSizePixel=0 row.ZIndex=112
-    Instance.new("UICorner",row).CornerRadius=UDim.new(0,3)
-    row.LayoutOrder=#pages["TELE"]:GetChildren()*10
-    local lbl=Instance.new("TextLabel",row)
-    lbl.Size=UDim2.new(0,40,1,0) lbl.Position=UDim2.new(0,6,0,0)
-    lbl.BackgroundTransparency=1 lbl.Text="X Y Z" lbl.Font=Enum.Font.Code
-    lbl.TextSize=9 lbl.TextColor3=TX lbl.TextXAlignment=Enum.TextXAlignment.Left lbl.ZIndex=113
-    local function makeBox(xOff, def)
-        local b=Instance.new("TextBox",row)
-        b.Size=UDim2.new(0,74,0,18) b.Position=UDim2.new(0,xOff,.5,-9)
-        b.BackgroundColor3=Color3.fromRGB(0,25,15) b.BorderSizePixel=0
-        b.Text=def b.Font=Enum.Font.Code b.TextSize=11 b.TextColor3=G
-        b.ClearTextOnFocus=false b.ZIndex=113
-        Instance.new("UICorner",b).CornerRadius=UDim.new(0,3)
-        local s=Instance.new("UIStroke",b) s.Color=DIM s.Thickness=1
-        return b
-    end
-    coordXBox=makeBox(44, "0")
-    coordYBox=makeBox(122, "5")
-    coordZBox=makeBox(200, "0")
-end
-makeCoordRow()
-
-mkBtn(pages["TELE"],"TELEPORT TO COORDINATES",function()
-    local x=tonumber(coordXBox.Text) or 0
-    local y=tonumber(coordYBox.Text) or 5
-    local z=tonumber(coordZBox.Text) or 0
-    teleportTo(Vector3.new(x,y,z))
-end)
-
-mkBtn(pages["TELE"],"USE MY COORDINATES",function()
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart")
-    if hr then
-        coordXBox.Text=tostring(math.floor(hr.Position.X))
-        coordYBox.Text=tostring(math.floor(hr.Position.Y))
-        coordZBox.Text=tostring(math.floor(hr.Position.Z))
-    end
-end)
-
-mkSec(pages["TELE"],"// 3008 PRESETS")
-mkBtn(pages["TELE"],"MAP CENTER (0, 5, 0)",function()
-    teleportTo(Vector3.new(0,5,0))
-end)
-mkBtn(pages["TELE"],"SKY HIGH (my pos +1000Y)",function()
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart")
-    if hr then teleportTo(hr.Position+Vector3.new(0,1000,0)) end
-end)
-mkBtn(pages["TELE"],"SPIRAL SCAN 8 HƯỚNG",function()
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart")
-    if not hr then return end
-    local start=hr.Position
-    task.spawn(function()
-        for i=1,8 do
-            local angle=math.rad(i*45)
-            local r=500
-            local pos=Vector3.new(start.X+math.cos(angle)*r, start.Y, start.Z+math.sin(angle)*r)
-            teleportTo(pos)
-            task.wait(1)
-        end
-        teleportTo(start)
-    end)
-end)
-
 mkSec(pages["TELE"],"// QUICK MOVE")
 mkBtn(pages["TELE"],"UP +50m",function()
     local c=pl.Character
@@ -1330,13 +1270,6 @@ mkBtn(pages["TELE"],"FORWARD +20m",function()
         teleportTo(c.HumanoidRootPart.Position+c.HumanoidRootPart.CFrame.LookVector*20)
     end
 end)
-mkBtn(pages["TELE"],"BACK +20m",function()
-    local c=pl.Character
-    if c and c:FindFirstChild("HumanoidRootPart") then
-        teleportTo(c.HumanoidRootPart.Position-c.HumanoidRootPart.CFrame.LookVector*20)
-    end
-end)
-
 mkSec(pages["TELE"],"// WAYPOINTS")
 mkSli(pages["TELE"],"WP Height",-10,30,wd.height,function(v) wd.height=v svW() end)
 for si=1,3 do
@@ -1387,7 +1320,7 @@ for si=1,3 do
     end)
 end
 
--- INFO tab
+-- INFO
 local infoRoot=Instance.new("Frame",pages["INFO"])
 infoRoot.Size=UDim2.new(1,-8,0,0)
 infoRoot.AutomaticSize=Enum.AutomaticSize.Y
@@ -1395,11 +1328,13 @@ infoRoot.BackgroundTransparency=1
 infoRoot.LayoutOrder=10
 infoRoot.ZIndex=115
 local irl=Instance.new("UIListLayout",infoRoot)
-irl.Padding=UDim.new(0,6) irl.SortOrder=Enum.SortOrder.LayoutOrder
+irl.Padding=UDim.new(0,6)
+irl.SortOrder=Enum.SortOrder.LayoutOrder
 local infoRefs={}
 local function makeCard(title,accent)
     local card=Instance.new("Frame",infoRoot)
-    card.Size=UDim2.new(1,0,0,0) card.AutomaticSize=Enum.AutomaticSize.Y
+    card.Size=UDim2.new(1,0,0,0)
+    card.AutomaticSize=Enum.AutomaticSize.Y
     card.BackgroundColor3=BG card.BackgroundTransparency=0.35 card.BorderSizePixel=0 card.ZIndex=116
     Instance.new("UICorner",card).CornerRadius=UDim.new(0,4)
     local cs=Instance.new("UIStroke",card) cs.Color=accent cs.Thickness=1 cs.Transparency=0.5
@@ -1496,7 +1431,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v12.0"
+                infoRefs.ver.Text="v11.0"
                 local a={}
                 if tg.hover then table.insert(a,"HOVER") end
                 if tg.espLine then table.insert(a,"LINE") end
@@ -1536,7 +1471,9 @@ end
 local function bootSequence()
     if bootRunning then return end
     bootRunning=true
-    for _,line in ipairs(BOOT_LINES) do stLbl.Text=line stLbl.TextColor3=G task.wait(0.08) end
+    for _,line in ipairs(BOOT_LINES) do
+        stLbl.Text=line stLbl.TextColor3=G task.wait(0.08)
+    end
     stLbl.Text="[ OK ] ready"
     typewriter(titleTarget,title,0.015)
     task.wait(0.1)
@@ -1713,7 +1650,7 @@ RS.RenderStepped:Connect(function(dt)
     end
 end)
 
--- Movement
+-- Movement Heartbeat
 RS.Heartbeat:Connect(function(dt)
     pcall(function()
         local c=pl.Character
@@ -1778,7 +1715,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v12] loaded - TELE FIX")
+print("[HACKER NEKO v11] loaded - FULL FIX + BACKGROUND")
 
 end)
 
