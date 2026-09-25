@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v9 - NO AURA + ESP FIX + FPS FIX ========
+-- ============ HACKER NEKO v10 - CLEAN + FIXED =====================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -52,13 +52,13 @@ local epf=Instance.new("Folder",ef) epf.Name="Players"
 local enf=Instance.new("Folder",ef) enf.Name="NPC"
 
 local stt={ws=16,hh=10,tph=3,jp=50,fov=70}
-local tg={ghost=false,hover=false,espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
-    espNPC=false,espItem=false,noclip=false,autoPick=false,
+local tg={hover=false,espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
+    espNPC=false,espItem=false,noclip=false,autoPick=false,mapBright=false,
     fps=false,infJump=false,aimE=false,aimA=false,antiVoid=false,antiAFK=false,trail=false}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
 local teleportTo
 
--- (waypoint code giữ nguyên)
+-- WAYPOINT STORAGE
 local WPF="HackerNekoWP_"..tostring(game.PlaceId)..".json"
 local hfa=(writefile~=nil) and (readfile~=nil) and (isfile~=nil)
 local wd={height=3,slots={
@@ -189,7 +189,7 @@ fpsLbl.Size=UDim2.new(0,80,1,0) fpsLbl.Position=UDim2.new(1,-88,0,0)
 fpsLbl.BackgroundTransparency=1 fpsLbl.Text="-- FPS" fpsLbl.Font=Enum.Font.Code
 fpsLbl.TextSize=9 fpsLbl.TextColor3=CY fpsLbl.TextXAlignment=Enum.TextXAlignment.Right fpsLbl.ZIndex=111
 
--- DIALOG (giữ nguyên)
+-- DIALOG
 local dlgOverlay=Instance.new("Frame",sg)
 dlgOverlay.Size=UDim2.new(1,0,1,0) dlgOverlay.BackgroundColor3=Color3.new(0,0,0)
 dlgOverlay.BackgroundTransparency=.6 dlgOverlay.BorderSizePixel=0 dlgOverlay.Visible=false dlgOverlay.ZIndex=900
@@ -228,7 +228,7 @@ dlgOverlay.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then closeDlg() end
 end)
 
--- TEXT DIALOG (giữ nguyên)
+-- TEXT DIALOG
 local txtOverlay=Instance.new("Frame",sg)
 txtOverlay.Size=UDim2.new(1,0,1,0) txtOverlay.BackgroundColor3=Color3.new(0,0,0)
 txtOverlay.BackgroundTransparency=.6 txtOverlay.BorderSizePixel=0 txtOverlay.Visible=false txtOverlay.ZIndex=910
@@ -277,8 +277,8 @@ txtSave.MouseButton1Click:Connect(function()
     closeTxt()
 end)
 
--- TABS (bỏ AURA, thêm 3008)
-local tabs={"MOVE","ESP","PLAYER","TELE","EXTRA","3008","INFO"}
+-- TABS (đã sắp xếp lại + bỏ GHOST, bỏ 3008)
+local tabs={"MOVE","ESP","COMBAT","PLAYER","TELE","INFO"}
 local pages={} local tabBtns={}
 
 local function switchTab(name)
@@ -321,7 +321,7 @@ for i,n in ipairs(tabs) do
     tabBtns[n]={bg=b,txt=txt,pfx=pfx}
 end
 
--- HELPERS (giữ nguyên mkSec / mkTog / mkSli / mkBtn)
+-- HELPERS
 local function mkSec(parent,txt)
     local s=Instance.new("Frame",parent)
     s.Size=UDim2.new(1,-8,0,16) s.BackgroundTransparency=1
@@ -426,10 +426,9 @@ local function mkBtn(parent,name,cb)
     return b
 end
 
--- ============ FPS BOOST (FIX MƯỢT) ============
--- Không còn quét cả workspace ồ ạt -> chỉ tắt effect trong tầm gần + throttle nhỏ
+-- ============ FPS BOOST (FIX ON/OFF) ============
 local fpsParts={} local fpsEffects={}
-local fpsRunning=false
+local fpsGen=0
 local function killOne(o)
     if not o or not o.Parent then return end
     local cls=o.ClassName
@@ -441,21 +440,21 @@ local function killOne(o)
         pcall(function() if o.CastShadow then table.insert(fpsParts,o) o.CastShadow=false end end)
     end
 end
-local function fpsScan()
-    if fpsRunning then return end
-    fpsRunning=true
-    task.spawn(function()
-        local all=workspace:GetDescendants()
-        for i=1,#all do
-            if not tg.fps then break end
-            pcall(killOne,all[i])
-            -- batch nhỏ 40 -> mượt hơn, không sốc frame
-            if i%40==0 then task.wait() end
-        end
-        fpsRunning=false
-    end)
+local function restoreFPS()
+    for i=#fpsEffects,1,-1 do
+        local e=fpsEffects[i]
+        pcall(function() if e[1] and e[1].Parent then e[1][e[2]]=e[3] end end)
+    end
+    fpsEffects={}
+    for i=1,#fpsParts do
+        local p=fpsParts[i]
+        pcall(function() if p and p.Parent then p.CastShadow=true end end)
+    end
+    fpsParts={}
 end
 local function tFPS(on)
+    fpsGen=fpsGen+1
+    local myGen=fpsGen
     if on then
         pcall(function()
             L.Brightness=2 L.ClockTime=14
@@ -473,20 +472,18 @@ local function tFPS(on)
                 t.WaterTransparency=1
             end
         end)
-        -- KHÔNG đụng QualityLevel nữa (gây stutter trên nhiều executor)
-        fpsScan()
+        task.spawn(function()
+            local all=workspace:GetDescendants()
+            for i=1,#all do
+                if fpsGen~=myGen then return end
+                if not tg.fps then return end
+                pcall(killOne,all[i])
+                if i%40==0 then task.wait() end
+            end
+        end)
     else
         pcall(function() if setfpscap then setfpscap(240) end end)
-        for i=#fpsEffects,1,-1 do
-            local e=fpsEffects[i]
-            pcall(function() if e[1] and e[1].Parent then e[1][e[2]]=e[3] end end)
-        end
-        fpsEffects={}
-        for i=1,#fpsParts do
-            local p=fpsParts[i]
-            pcall(function() if p and p.Parent then p.CastShadow=true end end)
-        end
-        fpsParts={}
+        restoreFPS()
         pcall(function()
             L.GlobalShadows=true
             L.EnvironmentDiffuseScale=1
@@ -495,7 +492,95 @@ local function tFPS(on)
     end
 end
 
--- ============ ATTACK REMOTES (FIX LAG - BỎ LOOP 5s) ============
+-- ============ MAP BRIGHT ============
+local savedLighting=nil
+local function tMapBright(on)
+    if on then
+        if not savedLighting then
+            savedLighting={
+                Brightness=L.Brightness,
+                ClockTime=L.ClockTime,
+                Ambient=L.Ambient,
+                OutdoorAmbient=L.OutdoorAmbient,
+                FogEnd=L.FogEnd,
+                FogStart=L.FogStart,
+                GlobalShadows=L.GlobalShadows,
+                ExposureCompensation=L.ExposureCompensation,
+            }
+        end
+        pcall(function()
+            L.Brightness=3
+            L.ClockTime=14
+            L.Ambient=Color3.fromRGB(180,180,180)
+            L.OutdoorAmbient=Color3.fromRGB(180,180,180)
+            L.FogEnd=100000
+            L.FogStart=100000
+            L.GlobalShadows=false
+            L.ExposureCompensation=0.5
+        end)
+        -- tắt Atmosphere/ColorCorrection làm tối
+        for _,v in ipairs(L:GetChildren()) do
+            pcall(function()
+                if v:IsA("ColorCorrectionEffect") then v.Enabled=false end
+                if v:IsA("Atmosphere") then v.Density=0 end
+                if v:IsA("BloomEffect") then v.Intensity=0 end
+                if v:IsA("BlurEffect") then v.Size=0 end
+            end)
+        end
+    else
+        if savedLighting then
+            pcall(function()
+                L.Brightness=savedLighting.Brightness
+                L.ClockTime=savedLighting.ClockTime
+                L.Ambient=savedLighting.Ambient
+                L.OutdoorAmbient=savedLighting.OutdoorAmbient
+                L.FogEnd=savedLighting.FogEnd
+                L.FogStart=savedLighting.FogStart
+                L.GlobalShadows=savedLighting.GlobalShadows
+                L.ExposureCompensation=savedLighting.ExposureCompensation
+            end)
+            savedLighting=nil
+        end
+    end
+end
+
+-- ============ NO FALL DAMAGE (HIDDEN, ALWAYS ON) ============
+local function setupNoFall(char)
+    local h=char:WaitForChild("Humanoid",5)
+    if not h then return end
+    local lastHp=h.Health
+    local wasFalling=false
+    local fallTimer=0
+
+    task.spawn(function()
+        while char.Parent and h.Parent do
+            task.wait(0.05)
+            local hr=char:FindFirstChild("HumanoidRootPart")
+            if hr then
+                local vy=hr.AssemblyLinearVelocity.Y
+                if vy<-35 then
+                    wasFalling=true
+                    fallTimer=1.5
+                end
+                fallTimer=fallTimer-0.05
+                if fallTimer<=0 then wasFalling=false end
+            end
+        end
+    end)
+
+    h.HealthChanged:Connect(function(newHp)
+        if wasFalling and newHp<lastHp then
+            local drop=lastHp-newHp
+            if drop>=3 then
+                h.Health=lastHp
+                return
+            end
+        end
+        lastHp=h.Health
+    end)
+end
+
+-- ============ ATTACK REMOTES ============
 local attackRemotes={}
 local function scanAttackRemotes()
     local tmp={}
@@ -547,7 +632,7 @@ local function fireAttack()
     end
 end
 
--- ============ AUTO ATTACK (giữ nguyên) ============
+-- ============ AUTO ATTACK ============
 local function aaApplySpeed()
     local c=pl.Character if not c then return end
     for _,v in ipairs(c:GetDescendants()) do
@@ -594,8 +679,7 @@ RS.Heartbeat:Connect(function(dt)
     if aa.atkSpd then aaApplySpeed() end
 end)
 
--- ============ TELEPORT (FIX MAP LỚN + KHÔNG LAG) ============
--- Dùng PivotTo (chuẩn hơn CFrame), clear velocity, gọi trên nhiều frame
+-- ============ TELEPORT ============
 teleportTo=function(targetPos)
     local c=pl.Character if not c then return end
     local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return end
@@ -603,10 +687,8 @@ teleportTo=function(targetPos)
     pcall(function() hr:SetNetworkOwner(pl) end)
     hr.AssemblyLinearVelocity=Vector3.zero
     hr.AssemblyAngularVelocity=Vector3.zero
-    -- PivotTo là API chuẩn, ít bị snap-back
     pcall(function() c:PivotTo(target) end)
     pcall(function() hr.CFrame=target end)
-    -- Làm sạch trong background, không block thread chính
     task.spawn(function()
         for i=1,4 do
             task.wait()
@@ -627,50 +709,8 @@ RS.Heartbeat:Connect(function()
     teleportTo(predicted+Vector3.new(0,aa.hoverDist,0))
 end)
 
--- ============ GHOST (giữ nguyên) ============
-local gv={} local gdc=nil
-local function tGhost(on)
-    local ch=pl.Character
-    if not on then
-        if gdc then gdc:Disconnect() gdc=nil end
-        if ch then
-            local h=ch:FindFirstChildOfClass("Humanoid")
-            if h then h.HealthDisplayDistance=100 h.NameDisplayDistance=100 h.HealthDisplayType=Enum.HumanoidHealthDisplayType.DisplayWhenDamaged h.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.Viewer end
-            local hr=ch:FindFirstChild("HumanoidRootPart")
-            if hr then local b=hr:FindFirstChild("NGBF") if b then b:Destroy() end end
-        end
-        for pt,vs in pairs(gv) do
-            if pt and pt.Parent then pcall(function() for k,v in pairs(vs) do pt[k]=v end end) end
-        end
-        gv={} return
-    end
-    if not ch then return end
-    local h=ch:FindFirstChildOfClass("Humanoid") if not h then return end
-    h.HealthDisplayDistance=0 h.NameDisplayDistance=0 h.HealthDisplayType=Enum.HumanoidHealthDisplayType.AlwaysOff h.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
-    for _,pt in ipairs(ch:GetDescendants()) do
-        if pt:IsA("BasePart") then
-            if not gv[pt] then
-                gv[pt]={CanCollide=pt.CanCollide,CanQuery=pt.CanQuery,CanTouch=pt.CanTouch,LocalTransparencyModifier=pt.LocalTransparencyModifier}
-                pt.CanCollide=false pt.CanQuery=false pt.CanTouch=false pt.LocalTransparencyModifier=1
-            end
-        end
-    end
-    gdc=ch.DescendantAdded:Connect(function(p)
-        if tg.ghost and p:IsA("BasePart") then
-            if not gv[p] then
-                gv[p]={CanCollide=p.CanCollide,CanQuery=p.CanQuery,CanTouch=p.CanTouch,LocalTransparencyModifier=p.LocalTransparencyModifier}
-                p.CanCollide=false p.CanQuery=false p.CanTouch=false p.LocalTransparencyModifier=1
-            end
-        end
-    end)
-end
-
--- ============ ESP (REWRITE - FIX TOÀN BỘ) ============
-local evs={}       -- player ESP
-local npcEvs={}    -- npc ESP
-local itemEvs={}   -- item ESP
-local trcs={}      -- esp line
-local lps={}       -- last position cache cho line
+-- ============ ESP PLAYER ============
+local evs={} local trcs={}
 
 local function measureBody(char)
     local hrp=char:FindFirstChild("HumanoidRootPart")
@@ -683,7 +723,6 @@ local function measureBody(char)
     return {center=(topY+bottomY)/2-hrp.Position.Y,height=topY-bottomY,width=2.4}
 end
 
--- build ESP đồng bộ khi có HRP, nếu thiếu sẽ được retry từ loop
 local function buildESP(char)
     if not char or char==pl.Character then return end
     if evs[char] then return end
@@ -691,10 +730,7 @@ local function buildESP(char)
     local head=char:FindFirstChild("Head") or hr
     if not hr or not head then return end
 
-    if evs[char] then pcall(function() evs[char].folder:Destroy() end) evs[char]=nil end
-
     local fold=Instance.new("Folder",epf) fold.Name=char.Name
-
     local hl=Instance.new("Highlight",fold)
     hl.Adornee=char hl.FillColor=G hl.FillTransparency=0.9 hl.OutlineColor=G hl.OutlineTransparency=0
     hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop hl.Enabled=tg.espBody
@@ -773,7 +809,6 @@ end
 local function destroyESP(char)
     if evs[char] then pcall(function() evs[char].folder:Destroy() end) evs[char]=nil end
 end
-
 local function applyESPToggles()
     for char,data in pairs(evs) do
         if char.Parent then
@@ -787,54 +822,34 @@ local function applyESPToggles()
     end
 end
 
--- Retry loop: cứ 0.5s check player thiếu ESP thì build
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        if tg.espName or tg.espHp or tg.espDist or tg.espBody or tg.espLine then
-            for _,p in ipairs(P:GetPlayers()) do
-                if p~=pl and p.Character then
-                    if not evs[p.Character] and p.Character:FindFirstChild("HumanoidRootPart") then
-                        buildESP(p.Character)
-                    end
-                end
-            end
-        end
-    end
-end)
+-- ============ NPC ESP + ITEM ESP (FIX) ============
+local npcEvs={} local itemEvs={}
+local npcConn=nil local itemConn=nil
 
--- ============ NPC ESP + ITEM ESP (cho 3008 & map khác) ============
-local function isNPC(model)
-    if not model or not model:IsA("Model") then return false end
-    if P:GetPlayerFromCharacter(model) then return false end
-    return model:FindFirstChildOfClass("Humanoid")~=nil and model:FindFirstChild("HumanoidRootPart")~=nil
-end
-local function isItem(inst)
-    if not inst then return false end
-    if inst:IsA("Tool") then return true end
-    if inst:IsA("Model") then
-        local n=string.lower(inst.Name)
-        return n:find("item") or n:find("food") or n:find("water") or n:find("weapon") or n:find("tool") or n:find("pickup")
-    end
-    if inst:IsA("BasePart") then
-        local n=string.lower(inst.Name)
-        return n:find("item") or n:find("pickup") or n:find("coin") or n:find("cash")
+local function isPlayerCharacter(model)
+    if not model then return false end
+    for _,p in ipairs(P:GetPlayers()) do
+        if p.Character==model then return true end
     end
     return false
 end
+
 local function buildNPCEsp(model)
     if npcEvs[model] then return end
-    local hr=model:FindFirstChild("HumanoidRootPart") if not hr then return end
+    local hr=model:FindFirstChild("HumanoidRootPart")
+    if not hr then return end
+    local hum=model:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
     local fold=Instance.new("Folder",enf) fold.Name=model.Name
     local hl=Instance.new("Highlight",fold)
-    hl.Adornee=model hl.FillColor=RED hl.FillTransparency=0.75 hl.OutlineColor=RED
+    hl.Adornee=model hl.FillColor=RED hl.FillTransparency=0.7 hl.OutlineColor=RED
     hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
     local bb=Instance.new("BillboardGui",fold)
-    bb.Adornee=hr bb.Size=UDim2.new(0,120,0,24) bb.StudsOffset=Vector3.new(0,3,0)
-    bb.AlwaysOnTop=true bb.MaxDistance=2000
+    bb.Adornee=hr bb.Size=UDim2.new(0,140,0,26) bb.StudsOffset=Vector3.new(0,3.2,0)
+    bb.AlwaysOnTop=true bb.MaxDistance=3000 bb.LightInfluence=0
     local l=Instance.new("TextLabel",bb)
     l.Size=UDim2.new(1,0,1,0) l.BackgroundTransparency=0.5
-    l.BackgroundColor3=Color3.fromRGB(20,0,0) l.Text=model.Name
+    l.BackgroundColor3=Color3.fromRGB(30,0,0) l.Text=model.Name
     l.Font=Enum.Font.Code l.TextSize=12 l.TextColor3=RED
     l.TextStrokeTransparency=0.3 l.TextStrokeColor3=Color3.new(0,0,0)
     npcEvs[model]={folder=fold,hl=hl,bb=bb}
@@ -842,41 +857,147 @@ end
 local function destroyNPCEsp(model)
     if npcEvs[model] then pcall(function() npcEvs[model].folder:Destroy() end) npcEvs[model]=nil end
 end
+
+local itemKeywords={"item","food","water","tool","weapon","pickup","coin","cash","bread","apple","can","bottle","soda","bandage","medkit","gun","bat","axe","hammer","knife","supply","crate","loot","dropped","drop"}
+local function isItemName(n)
+    n=string.lower(n)
+    for _,k in ipairs(itemKeywords) do
+        if n:find(k) then return true end
+    end
+    return false
+end
 local function buildItemEsp(inst)
     if itemEvs[inst] then return end
-    local target = inst:IsA("BasePart") and inst or inst:FindFirstChildWhichIsA("BasePart",true)
+    local target=inst
+    if inst:IsA("Model") then
+        target=inst:FindFirstChildWhichIsA("BasePart",true)
+    elseif inst:IsA("Tool") then
+        target=inst:FindFirstChild("Handle") or inst:FindFirstChildWhichIsA("BasePart",true)
+    end
     if not target then return end
     local fold=Instance.new("Folder",enf) fold.Name=inst.Name
     local hl=Instance.new("Highlight",fold)
-    hl.Adornee=inst:IsA("Model") and inst or target
+    hl.Adornee=inst
     hl.FillColor=YEL hl.FillTransparency=0.6 hl.OutlineColor=YEL
     hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
-    itemEvs[inst]={folder=fold,hl=hl,part=target}
+    local bb=Instance.new("BillboardGui",fold)
+    bb.Adornee=target bb.Size=UDim2.new(0,120,0,20) bb.StudsOffset=Vector3.new(0,1.5,0)
+    bb.AlwaysOnTop=true bb.MaxDistance=2000 bb.LightInfluence=0
+    local l=Instance.new("TextLabel",bb)
+    l.Size=UDim2.new(1,0,1,0) l.BackgroundTransparency=0.5
+    l.BackgroundColor3=Color3.fromRGB(30,25,0) l.Text=inst.Name
+    l.Font=Enum.Font.Code l.TextSize=11 l.TextColor3=YEL
+    l.TextStrokeTransparency=0.3 l.TextStrokeColor3=Color3.new(0,0,0)
+    itemEvs[inst]={folder=fold,hl=hl,bb=bb,target=target}
 end
 local function destroyItemEsp(inst)
     if itemEvs[inst] then pcall(function() itemEvs[inst].folder:Destroy() end) itemEvs[inst]=nil end
 end
 
--- Quét NPC/item định kỳ, throttle
+local function scanNPCs()
+    if not tg.espNPC then return end
+    task.spawn(function()
+        local all=workspace:GetDescendants()
+        for i=1,#all do
+            if not tg.espNPC then return end
+            local o=all[i]
+            if o and o.Parent and o:IsA("Model") and not npcEvs[o] and not evs[o] then
+                local hum=o:FindFirstChildOfClass("Humanoid")
+                if hum and o:FindFirstChild("HumanoidRootPart") and not isPlayerCharacter(o) then
+                    buildNPCEsp(o)
+                end
+            end
+            if i%60==0 then task.wait() end
+        end
+    end)
+end
+
+local function scanItems()
+    if not tg.espItem then return end
+    task.spawn(function()
+        local all=workspace:GetDescendants()
+        for i=1,#all do
+            if not tg.espItem then return end
+            local o=all[i]
+            if o and o.Parent and not itemEvs[o] then
+                if o:IsA("Tool") then
+                    buildItemEsp(o)
+                elseif o:IsA("Model") and isItemName(o.Name) then
+                    buildItemEsp(o)
+                elseif o:IsA("BasePart") and isItemName(o.Name) then
+                    buildItemEsp(o)
+                end
+            end
+            if i%60==0 then task.wait() end
+        end
+    end)
+end
+
+local function enableNPCScan()
+    if npcConn then return end
+    scanNPCs()
+    npcConn=workspace.DescendantAdded:Connect(function(o)
+        if not tg.espNPC then return end
+        if o:IsA("Model") then
+            task.wait(0.15)
+            if o.Parent and not npcEvs[o] then
+                local hum=o:FindFirstChildOfClass("Humanoid")
+                if hum and o:FindFirstChild("HumanoidRootPart") and not isPlayerCharacter(o) then
+                    buildNPCEsp(o)
+                end
+            end
+        end
+    end)
+end
+local function disableNPCScan()
+    if npcConn then npcConn:Disconnect() npcConn=nil end
+    for m in pairs(npcEvs) do destroyNPCEsp(m) end
+end
+local function enableItemScan()
+    if itemConn then return end
+    scanItems()
+    itemConn=workspace.DescendantAdded:Connect(function(o)
+        if not tg.espItem then return end
+        task.wait(0.15)
+        if o.Parent and not itemEvs[o] then
+            if o:IsA("Tool") then
+                buildItemEsp(o)
+            elseif (o:IsA("Model") or o:IsA("BasePart")) and isItemName(o.Name) then
+                buildItemEsp(o)
+            end
+        end
+    end)
+end
+local function disableItemScan()
+    if itemConn then itemConn:Disconnect() itemConn=nil end
+    for m in pairs(itemEvs) do destroyItemEsp(m) end
+end
+
+-- cleanup định kỳ
 task.spawn(function()
     while true do
-        task.wait(1)
+        task.wait(2)
         if tg.espNPC then
-            for _,o in ipairs(workspace:GetChildren()) do
-                if isNPC(o) and not npcEvs[o] then buildNPCEsp(o) end
-            end
-            -- dọn NPC đã chết
             for m in pairs(npcEvs) do if not m.Parent then destroyNPCEsp(m) end end
-        else
-            for m in pairs(npcEvs) do destroyNPCEsp(m) end
         end
         if tg.espItem then
-            for _,o in ipairs(workspace:GetChildren()) do
-                if isItem(o) and not itemEvs[o] then buildItemEsp(o) end
-            end
             for m in pairs(itemEvs) do if not m.Parent then destroyItemEsp(m) end end
-        else
-            for m in pairs(itemEvs) do destroyItemEsp(m) end
+        end
+    end
+end)
+
+-- Rescan player ESP
+task.spawn(function()
+    while true do
+        task.wait(0.6)
+        if tg.espName or tg.espHp or tg.espDist or tg.espBody or tg.espLine then
+            for _,p in ipairs(P:GetPlayers()) do
+                if p~=pl and p.Character and not evs[p.Character] then
+                    if p.Character:FindFirstChild("HumanoidRootPart") then
+                        buildESP(p.Character)
+                    end
+                end
+            end
         end
     end
 end)
@@ -889,35 +1010,70 @@ RS.Stepped:Connect(function()
         if p:IsA("BasePart") and p.CanCollide then p.CanCollide=false end
     end
 end)
+
 task.spawn(function()
     while true do
-        task.wait(0.6)
+        task.wait(0.4)
         if tg.autoPick then
             local c=pl.Character
             local hr=c and c:FindFirstChild("HumanoidRootPart")
             if hr then
-                for _,o in ipairs(workspace:GetChildren()) do
-                    if isItem(o) then
-                        local part=o:IsA("BasePart") and o or o:FindFirstChildWhichIsA("BasePart",true)
-                        if part and (part.Position-hr.Position).Magnitude<10 then
-                            pcall(function()
-                                if firetouchinterest then
-                                    firetouchinterest(hr,part,0); firetouchinterest(hr,part,1)
-                                end
-                                if fireproximityprompt then
-                                    local pp=part:FindFirstChildOfClass("ProximityPrompt")
-                                    if pp then fireproximityprompt(pp) end
-                                end
-                            end)
+                -- gom tất cả item gần đây
+                local nearby={}
+                for inst in pairs(itemEvs) do
+                    if inst.Parent and itemEvs[inst].target and itemEvs[inst].target.Parent then
+                        local pos=itemEvs[inst].target.Position
+                        if (pos-hr.Position).Magnitude<12 then
+                            table.insert(nearby,itemEvs[inst].target)
                         end
                     end
+                end
+                -- nếu chưa bật ESP item, tự quét
+                if #nearby==0 then
+                    for _,o in ipairs(workspace:GetDescendants()) do
+                        local part
+                        if o:IsA("BasePart") and isItemName(o.Name) then part=o
+                        elseif o:IsA("Model") and isItemName(o.Name) then part=o:FindFirstChildWhichIsA("BasePart",true)
+                        elseif o:IsA("Tool") then part=o:FindFirstChild("Handle") or o:FindFirstChildWhichIsA("BasePart",true) end
+                        if part and part.Parent then
+                            if (part.Position-hr.Position).Magnitude<12 then
+                                table.insert(nearby,part)
+                            end
+                        end
+                    end
+                end
+                for _,part in ipairs(nearby) do
+                    pcall(function()
+                        -- fire từ HRP
+                        if firetouchinterest then
+                            firetouchinterest(hr,part,0)
+                            task.wait()
+                            firetouchinterest(hr,part,1)
+                        end
+                        -- fire từ tất cả part cơ thể
+                        if firetouchinterest then
+                            for _,op in ipairs(c:GetDescendants()) do
+                                if op:IsA("BasePart") then
+                                    pcall(function()
+                                        firetouchinterest(op,part,0)
+                                        firetouchinterest(op,part,1)
+                                    end)
+                                end
+                            end
+                        end
+                        -- ProximityPrompt
+                        if fireproximityprompt then
+                            local pp=part:FindFirstChildOfClass("ProximityPrompt")
+                            if pp then fireproximityprompt(pp) end
+                        end
+                    end)
                 end
             end
         end
     end
 end)
 
--- ============ ANTI VOID / AFK / TRAIL (giữ nguyên) ============
+-- ============ ANTI VOID / AFK / TRAIL ============
 local lastSafeCF=nil
 RS.Heartbeat:Connect(function()
     local c=pl.Character if not c then return end
@@ -971,7 +1127,9 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- ============ POPULATE UI ============
+-- ============ POPULATE UI (SẮP XẾP LẠI) ============
+
+-- MOVE
 mkSec(pages["MOVE"],"// SPEED")
 mkSli(pages["MOVE"],"Walk Speed",16,500,16,function(v) stt.ws=v end)
 mkSec(pages["MOVE"],"// JUMP")
@@ -981,20 +1139,22 @@ mkSec(pages["MOVE"],"// HOVER")
 mkSli(pages["MOVE"],"Hover Height",2,20,10,function(v) stt.hh=v end)
 mkTog(pages["MOVE"],"CHAN MA (hover)",false,function(on) tg.hover=on end)
 
-mkSec(pages["ESP"],"// WALLHACK")
+-- ESP
+mkSec(pages["ESP"],"// PLAYER ESP")
 mkTog(pages["ESP"],"ESP LINE (RAINBOW)",false,function(on) tg.espLine=on end)
 mkTog(pages["ESP"],"ESP NAME",false,function(on) tg.espName=on applyESPToggles() end)
 mkTog(pages["ESP"],"ESP HEALTH",false,function(on) tg.espHp=on applyESPToggles() end)
 mkTog(pages["ESP"],"ESP DISTANCE",false,function(on) tg.espDist=on applyESPToggles() end)
 mkTog(pages["ESP"],"ESP BODY FX",false,function(on) tg.espBody=on applyESPToggles() end)
+mkSec(pages["ESP"],"// NPC / ITEM ESP")
+mkTog(pages["ESP"],"NPC / ZOMBIE ESP",false,function(on) tg.espNPC=on if on then enableNPCScan() else disableNPCScan() end end)
+mkTog(pages["ESP"],"ITEM ESP",false,function(on) tg.espItem=on if on then enableItemScan() else disableItemScan() end end)
 
-mkSec(pages["PLAYER"],"// ABILITIES")
-mkTog(pages["PLAYER"],"GHOST",false,function(on) tg.ghost=on tGhost(on) end)
-mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on tFPS(on) end)
-mkSec(pages["PLAYER"],"// AUTO ATTACK")
-mkSli(pages["PLAYER"],"Atk Speed",1,200,200,function(v) aa.speed=v end)
-mkSli(pages["PLAYER"],"Hover Dist",0,10,0,function(v) aa.hoverDist=v end)
-local aaTargetBtn=mkBtn(pages["PLAYER"],"TARGET: (none)",function() end)
+-- COMBAT
+mkSec(pages["COMBAT"],"// AUTO ATTACK")
+mkSli(pages["COMBAT"],"Atk Speed",1,200,200,function(v) aa.speed=v end)
+mkSli(pages["COMBAT"],"Hover Dist",0,10,0,function(v) aa.hoverDist=v end)
+local aaTargetBtn=mkBtn(pages["COMBAT"],"TARGET: (none)",function() end)
 local function openTargetPicker()
     dlgTitle.Text="> SELECT TARGET PLAYER"
     for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
@@ -1011,16 +1171,28 @@ local function openTargetPicker()
     dlg.Visible=true dlgOverlay.Visible=true
 end
 aaTargetBtn.MouseButton1Click:Connect(function() openTargetPicker() end)
-mkTog(pages["PLAYER"],"AUTO ATTACK",false,function(on)
+mkTog(pages["COMBAT"],"AUTO ATTACK",false,function(on)
     if on and not aa.target then
         aaTargetBtn.Text="  > TARGET: chon truoc!"
         return
     end
     aa.enabled=on aa.atkSpd=on aa.hoverOn=on
 end)
-mkSec(pages["PLAYER"],"// AIMLOCK")
-mkTog(pages["PLAYER"],"AIM ENEMY",false,function(on) tg.aimE=on end)
-mkTog(pages["PLAYER"],"AIM ALL",false,function(on) tg.aimA=on end)
+mkSec(pages["COMBAT"],"// AIMLOCK")
+mkTog(pages["COMBAT"],"AIM ENEMY",false,function(on) tg.aimE=on end)
+mkTog(pages["COMBAT"],"AIM ALL",false,function(on) tg.aimA=on end)
+
+-- PLAYER
+mkSec(pages["PLAYER"],"// PERFORMANCE")
+mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on tFPS(on) end)
+mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on tMapBright(on) end)
+mkSec(pages["PLAYER"],"// SURVIVAL")
+mkTog(pages["PLAYER"],"ANTI VOID",false,function(on) tg.antiVoid=on end)
+mkTog(pages["PLAYER"],"ANTI AFK",false,function(on) tg.antiAFK=on end)
+mkTog(pages["PLAYER"],"NOCLIP",false,function(on) tg.noclip=on end)
+mkTog(pages["PLAYER"],"AUTO PICKUP (12m)",false,function(on) tg.autoPick=on end)
+mkSec(pages["PLAYER"],"// EFFECT")
+mkTog(pages["PLAYER"],"TRAIL RAINBOW",false,function(on) tg.trail=on end)
 mkSec(pages["PLAYER"],"// CAMERA")
 mkSli(pages["PLAYER"],"FOV",70,120,70,function(v) cam.FieldOfView=v end)
 mkSec(pages["PLAYER"],"// UTILITIES")
@@ -1031,7 +1203,7 @@ mkBtn(pages["PLAYER"],"REJOIN SERVER",function()
     pcall(function() TS:TeleportToPlaceInstance(game.PlaceId,game.JobId,pl) end)
 end)
 
--- TELE (giữ nguyên khung)
+-- TELE
 mkSec(pages["TELE"],"// TELEPORT TO PLAYER")
 local tpTargetBtn=mkBtn(pages["TELE"],"SELECT PLAYER",function() end)
 local tpSelected=nil
@@ -1125,29 +1297,7 @@ for si=1,3 do
     end)
 end
 
--- EXTRA
-mkSec(pages["EXTRA"],"// PROTECTION")
-mkTog(pages["EXTRA"],"ANTI VOID",false,function(on) tg.antiVoid=on end)
-mkTog(pages["EXTRA"],"ANTI AFK",false,function(on) tg.antiAFK=on end)
-mkTog(pages["EXTRA"],"NOCLIP",false,function(on) tg.noclip=on end)
-mkSec(pages["EXTRA"],"// EFFECT")
-mkTog(pages["EXTRA"],"TRAIL RAINBOW",false,function(on) tg.trail=on end)
-
--- 3008 TAB
-mkSec(pages["3008"],"// 3008 SPECIAL")
-mkTog(pages["3008"],"ZOMBIE / NPC ESP",false,function(on) tg.espNPC=on end)
-mkTog(pages["3008"],"ITEM ESP (food/water/tool)",false,function(on) tg.espItem=on end)
-mkTog(pages["3008"],"AUTO PICKUP (10m)",false,function(on) tg.autoPick=on end)
-mkSec(pages["3008"],"// TIPS")
-local tipsLbl=Instance.new("TextLabel",pages["3008"])
-tipsLbl.Size=UDim2.new(1,-8,0,110)
-tipsLbl.BackgroundTransparency=1
-tipsLbl.Text="• BAT: ZOMBIE ESP + ITEM ESP\n• AUTO PICKUP: đứng gần item ~10m\n• NOCLIP: chui vào nhà không cần cửa\n• TELE tab: lưu waypoint cho cửa hàng\n• FPS BOOST: bật khi vào đêm đông zombie"
-tipsLbl.Font=Enum.Font.Code tipsLbl.TextSize=9 tipsLbl.TextColor3=TX
-tipsLbl.TextXAlignment=Enum.TextXAlignment.Left tipsLbl.TextYAlignment=Enum.TextYAlignment.Top
-tipsLbl.TextWrapped=true tipsLbl.LayoutOrder=999
-
--- INFO tab (giữ nguyên, chỉ bỏ refs ka)
+-- INFO
 local infoRoot=Instance.new("Frame",pages["INFO"])
 infoRoot.Size=UDim2.new(1,-8,0,0)
 infoRoot.AutomaticSize=Enum.AutomaticSize.Y
@@ -1258,17 +1408,23 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v9.0"
+                infoRefs.ver.Text="v10.0"
                 local a={}
-                if tg.ghost then table.insert(a,"GHOST") end
                 if tg.hover then table.insert(a,"HOVER") end
                 if tg.espLine then table.insert(a,"LINE") end
-                if tg.antiVoid then table.insert(a,"VOID") end
-                if tg.antiAFK then table.insert(a,"AFK") end
-                if tg.trail then table.insert(a,"TRAIL") end
+                if tg.espName then table.insert(a,"NAME") end
+                if tg.espHp then table.insert(a,"HP") end
+                if tg.espDist then table.insert(a,"DIST") end
+                if tg.espBody then table.insert(a,"BODY") end
                 if tg.espNPC then table.insert(a,"NPC") end
                 if tg.espItem then table.insert(a,"ITEM") end
                 if tg.noclip then table.insert(a,"NOCLIP") end
+                if tg.autoPick then table.insert(a,"PICK") end
+                if tg.mapBright then table.insert(a,"BRIGHT") end
+                if tg.fps then table.insert(a,"FPS+") end
+                if tg.antiVoid then table.insert(a,"VOID") end
+                if tg.antiAFK then table.insert(a,"AFK") end
+                if tg.trail then table.insert(a,"TRAIL") end
                 if aa.enabled then table.insert(a,"AA") end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
@@ -1279,7 +1435,7 @@ end)
 
 switchTab("MOVE")
 
--- BOOT + SHOW/HIDE (giữ nguyên)
+-- BOOT
 local BOOT_LINES={"> init kernel...","> load modules [OK]","> bypass AC...","> inject payload...","> conn established"}
 local titleTarget="> ROOT@NEKO:~$ ./run.sh"
 local bootRunning=false
@@ -1347,12 +1503,11 @@ UIS.InputEnded:Connect(function(i)
 end)
 main.Position=toggleBtn.Position
 
--- RENDER LOOP (giữ, fix nhẹ)
+-- RENDER LOOP
 local rT=0
 local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
 RS.RenderStepped:Connect(function(dt)
     rT=tick()
-    -- rain không cần pcall
     if menuOpen then
         for _,c in ipairs(rainCols) do
             c.offset=c.offset+c.speed*dt*2
@@ -1362,7 +1517,7 @@ RS.RenderStepped:Connect(function(dt)
     end
     tglGlow.Transparency=0.7+math.abs(math.sin(rT*2))*0.2
 
-    -- ESP line
+    -- ESP Line
     if tg.espLine and drawingAvailable then
         local ct2=Vector2.new(cam.ViewportSize.X/2,0)
         local rb=Color3.fromHSV(rT%4/4,1,1)
@@ -1389,7 +1544,7 @@ RS.RenderStepped:Connect(function(dt)
         trcs={}
     end
 
-    -- ESP body update
+    -- ESP body
     if tg.espName or tg.espHp or tg.espDist or tg.espBody then
         local myChar=pl.Character
         local myHR=myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -1476,7 +1631,7 @@ RS.RenderStepped:Connect(function(dt)
     end
 end)
 
--- Movement HB
+-- Movement Heartbeat
 RS.Heartbeat:Connect(function(dt)
     pcall(function()
         local c=pl.Character
@@ -1506,12 +1661,6 @@ RS.Heartbeat:Connect(function(dt)
                     h:SetStateEnabled(Enum.HumanoidStateType.Freefall,true)
                     h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,true)
                 end
-                if tg.ghost then
-                    if h.Health>0 and h.Health<h.MaxHealth then pcall(function() h.Health=h.MaxHealth end) end
-                    local b=hr:FindFirstChild("NGBF")
-                    if not b then b=Instance.new("BodyForce") b.Name="NGBF" b.Parent=hr end
-                    b.Force=Vector3.new(0,workspace.Gravity*hr:GetMass(),0)
-                end
             end
         end
     end)
@@ -1524,18 +1673,21 @@ UIS.JumpRequest:Connect(function()
         if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
     end
 end)
-pl.CharacterAdded:Connect(function()
-    task.wait(.5)
-    if tg.ghost then tGhost(true) end
-    -- rebuild ESP player khi respawn
+
+-- NO FALL DAMAGE setup cho mọi character
+pl.CharacterAdded:Connect(function(c)
+    task.wait(.4)
+    setupNoFall(c)
     if tg.espName or tg.espHp or tg.espDist or tg.espBody then
-        task.wait(0.5)
+        task.wait(0.4)
         for _,p in ipairs(P:GetPlayers()) do
             if p~=pl and p.Character and not evs[p.Character] then buildESP(p.Character) end
         end
         applyESPToggles()
     end
 end)
+if pl.Character then setupNoFall(pl.Character) end
+
 P.PlayerAdded:Connect(function(p)
     p.CharacterAdded:Connect(function(c)
         task.wait(1)
@@ -1544,13 +1696,9 @@ P.PlayerAdded:Connect(function(p)
         end
     end)
 end)
-
--- init ESP cho players hiện có
 for _,p in ipairs(P:GetPlayers()) do
-    if p~=pl and p.Character then
-        if p.Character:FindFirstChild("HumanoidRootPart") then
-            buildESP(p.Character)
-        end
+    if p~=pl and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+        buildESP(p.Character)
     end
 end
 applyESPToggles()
@@ -1562,7 +1710,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v9] loaded - NO AURA + ESP FIX + FPS FIX")
+print("[HACKER NEKO v10] loaded - CLEAN BUILD")
 
 end)
 
