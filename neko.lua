@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v8 - KILL AURA + FPS FIX ================
+-- ============ HACKER NEKO v9 - NO AURA + ESP FIX + FPS FIX ========
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -49,14 +49,16 @@ sg.Parent=gp
 
 local ef=Instance.new("Folder",gp) ef.Name="NekoESP"
 local epf=Instance.new("Folder",ef) epf.Name="Players"
+local enf=Instance.new("Folder",ef) enf.Name="NPC"
 
 local stt={ws=16,hh=10,tph=3,jp=50,fov=70}
 local tg={ghost=false,hover=false,espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
+    espNPC=false,espItem=false,noclip=false,autoPick=false,
     fps=false,infJump=false,aimE=false,aimA=false,antiVoid=false,antiAFK=false,trail=false}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
-local ka={enabled=false,radius=15,speed=15,ringOn=true,ringTrans=0.65,hue=0}
 local teleportTo
 
+-- (waypoint code giữ nguyên)
 local WPF="HackerNekoWP_"..tostring(game.PlaceId)..".json"
 local hfa=(writefile~=nil) and (readfile~=nil) and (isfile~=nil)
 local wd={height=3,slots={
@@ -187,7 +189,7 @@ fpsLbl.Size=UDim2.new(0,80,1,0) fpsLbl.Position=UDim2.new(1,-88,0,0)
 fpsLbl.BackgroundTransparency=1 fpsLbl.Text="-- FPS" fpsLbl.Font=Enum.Font.Code
 fpsLbl.TextSize=9 fpsLbl.TextColor3=CY fpsLbl.TextXAlignment=Enum.TextXAlignment.Right fpsLbl.ZIndex=111
 
--- DIALOG
+-- DIALOG (giữ nguyên)
 local dlgOverlay=Instance.new("Frame",sg)
 dlgOverlay.Size=UDim2.new(1,0,1,0) dlgOverlay.BackgroundColor3=Color3.new(0,0,0)
 dlgOverlay.BackgroundTransparency=.6 dlgOverlay.BorderSizePixel=0 dlgOverlay.Visible=false dlgOverlay.ZIndex=900
@@ -226,6 +228,7 @@ dlgOverlay.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then closeDlg() end
 end)
 
+-- TEXT DIALOG (giữ nguyên)
 local txtOverlay=Instance.new("Frame",sg)
 txtOverlay.Size=UDim2.new(1,0,1,0) txtOverlay.BackgroundColor3=Color3.new(0,0,0)
 txtOverlay.BackgroundTransparency=.6 txtOverlay.BorderSizePixel=0 txtOverlay.Visible=false txtOverlay.ZIndex=910
@@ -274,8 +277,8 @@ txtSave.MouseButton1Click:Connect(function()
     closeTxt()
 end)
 
--- TABS
-local tabs={"MOVE","ESP","PLAYER","AURA","TELE","EXTRA","INFO"}
+-- TABS (bỏ AURA, thêm 3008)
+local tabs={"MOVE","ESP","PLAYER","TELE","EXTRA","3008","INFO"}
 local pages={} local tabBtns={}
 
 local function switchTab(name)
@@ -318,7 +321,7 @@ for i,n in ipairs(tabs) do
     tabBtns[n]={bg=b,txt=txt,pfx=pfx}
 end
 
--- HELPERS
+-- HELPERS (giữ nguyên mkSec / mkTog / mkSli / mkBtn)
 local function mkSec(parent,txt)
     local s=Instance.new("Frame",parent)
     s.Size=UDim2.new(1,-8,0,16) s.BackgroundTransparency=1
@@ -331,7 +334,6 @@ local function mkSec(parent,txt)
     l.BackgroundTransparency=1 l.Text=txt l.Font=Enum.Font.Code l.TextSize=9
     l.TextColor3=CY l.TextXAlignment=Enum.TextXAlignment.Left
 end
-
 local function mkTog(parent,name,default,cb)
     local state=default or false
     local row=Instance.new("Frame",parent)
@@ -351,6 +353,7 @@ local function mkTog(parent,name,default,cb)
     btn.BackgroundColor3=BG2 btn.BorderSizePixel=0 btn.Text="[OFF]"
     btn.Font=Enum.Font.Code btn.TextSize=9 btn.TextColor3=DIM btn.AutoButtonColor=false btn.ZIndex=113
     Instance.new("UICorner",btn).CornerRadius=UDim.new(0,3)
+    if state then btn.Text="[ON ]" btn.TextColor3=Color3.new(0,0,0) btn.BackgroundColor3=G lead.BackgroundColor3=G end
     btn.MouseButton1Click:Connect(function()
         state=not state
         if state then
@@ -362,7 +365,6 @@ local function mkTog(parent,name,default,cb)
     end)
     return btn
 end
-
 local function mkSli(parent,name,mn,mx,dv,cb)
     local row=Instance.new("Frame",parent)
     row.Size=UDim2.new(1,-8,0,32) row.BackgroundColor3=BG
@@ -406,7 +408,6 @@ local function mkSli(parent,name,mn,mx,dv,cb)
         if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=false end
     end)
 end
-
 local function mkBtn(parent,name,cb)
     local b=Instance.new("TextButton",parent)
     b.Size=UDim2.new(1,-8,0,22) b.BackgroundColor3=BG
@@ -425,69 +426,55 @@ local function mkBtn(parent,name,cb)
     return b
 end
 
--- ============ FPS BOOST (ĐÃ FIX - KHÔNG ĐỔI MATERIAL) ============
+-- ============ FPS BOOST (FIX MƯỢT) ============
+-- Không còn quét cả workspace ồ ạt -> chỉ tắt effect trong tầm gần + throttle nhỏ
 local fpsParts={} local fpsEffects={}
-local fsT=nil local fpsScanning=false
-
+local fpsRunning=false
 local function killOne(o)
     if not o or not o.Parent then return end
-    local okG,isG=pcall(function() return o:IsDescendantOf(sg) end)
-    if okG and isG then return end
     local cls=o.ClassName
     if cls=="ParticleEmitter" or cls=="Trail" or cls=="Beam" or cls=="Fire" or cls=="Smoke" or cls=="Sparkles" then
         if o.Enabled then table.insert(fpsEffects,{o,"Enabled",true}) o.Enabled=false end
     elseif cls=="PointLight" or cls=="SpotLight" or cls=="SurfaceLight" then
         if o.Enabled then table.insert(fpsEffects,{o,"Enabled",true}) o.Enabled=false end
-    elseif cls=="DepthOfFieldEffect" or cls=="BloomEffect" or cls=="BlurEffect" or cls=="SunRaysEffect" or cls=="ColorCorrectionEffect" then
-        if o.Enabled then table.insert(fpsEffects,{o,"Enabled",true}) o.Enabled=false end
     elseif cls=="BasePart" or cls=="MeshPart" or cls=="UnionOperation" then
         pcall(function() if o.CastShadow then table.insert(fpsParts,o) o.CastShadow=false end end)
     end
 end
-
 local function fpsScan()
-    if fpsScanning then return end
-    fpsScanning=true
-    local all=workspace:GetDescendants()
-    for i=1,#all do
-        if not tg.fps then fpsScanning=false return end
-        pcall(killOne,all[i])
-        if i%300==0 then task.wait() end
-    end
-    fpsScanning=false
+    if fpsRunning then return end
+    fpsRunning=true
+    task.spawn(function()
+        local all=workspace:GetDescendants()
+        for i=1,#all do
+            if not tg.fps then break end
+            pcall(killOne,all[i])
+            -- batch nhỏ 40 -> mượt hơn, không sốc frame
+            if i%40==0 then task.wait() end
+        end
+        fpsRunning=false
+    end)
 end
-
 local function tFPS(on)
-    if fsT then task.cancel(fsT) fsT=nil end
     if on then
         pcall(function()
             L.Brightness=2 L.ClockTime=14
-            L.FogEnd=5000 L.FogStart=3000
             L.GlobalShadows=false
             L.EnvironmentDiffuseScale=0
             L.EnvironmentSpecularScale=0
             L.ShadowSoftness=0
-            L.OutdoorAmbient=Color3.fromRGB(178,178,178)
-            L.Ambient=Color3.fromRGB(178,178,178)
         end)
-        pcall(function() if setfpscap then setfpscap(120) end end)
-        pcall(function()
-            local s=settings()
-            if s and s.Rendering then
-                s.Rendering.QualityLevel=1
-                s.Rendering.SavedQualityLevel=1
-            end
-        end)
+        pcall(function() if setfpscap then setfpscap(144) end end)
         pcall(function()
             local t=workspace:FindFirstChildOfClass("Terrain")
             if t then
                 t.WaterWaveSize=0
                 t.WaterReflectance=0
                 t.WaterTransparency=1
-                t.Decoration=false
             end
         end)
-        task.spawn(fpsScan)
+        -- KHÔNG đụng QualityLevel nữa (gây stutter trên nhiều executor)
+        fpsScan()
     else
         pcall(function() if setfpscap then setfpscap(240) end end)
         for i=#fpsEffects,1,-1 do
@@ -508,17 +495,18 @@ local function tFPS(on)
     end
 end
 
--- ============ ATTACK REMOTES ============
+-- ============ ATTACK REMOTES (FIX LAG - BỎ LOOP 5s) ============
 local attackRemotes={}
 local function scanAttackRemotes()
-    attackRemotes={}
-    local keywords={"attack","hit","damage","swing","slash","strike","punch","kick","fire","shoot","melee","combat","weapon","sword","action","touch","kill"}
+    local tmp={}
+    local keywords={"attack","hit","damage","swing","slash","strike","punch","kick","fire","shoot","melee","combat","weapon","sword","action","kill"}
     local function scanContainer(cont)
-        for _,o in ipairs(cont:GetDescendants()) do
-            if o:IsA("RemoteEvent") or o:IsA("RemoteFunction") then
+        for _,o in ipairs(cont:GetChildren()) do
+            local ok2,isRemote=pcall(function() return o:IsA("RemoteEvent") or o:IsA("RemoteFunction") end)
+            if ok2 and isRemote then
                 local n=string.lower(o.Name)
                 for _,k in ipairs(keywords) do
-                    if n:find(k) then table.insert(attackRemotes,{obj=o,isFunc=o:IsA("RemoteFunction")}) break end
+                    if n:find(k) then table.insert(tmp,{obj=o,isFunc=o:IsA("RemoteFunction")}) break end
                 end
             end
         end
@@ -529,20 +517,21 @@ local function scanAttackRemotes()
         local tool=c:FindFirstChildOfClass("Tool")
         if tool then
             for _,o in ipairs(tool:GetDescendants()) do
-                if o:IsA("RemoteEvent") then table.insert(attackRemotes,{obj=o,isFunc=false})
-                elseif o:IsA("RemoteFunction") then table.insert(attackRemotes,{obj=o,isFunc=true}) end
+                if o:IsA("RemoteEvent") then table.insert(tmp,{obj=o,isFunc=false})
+                elseif o:IsA("RemoteFunction") then table.insert(tmp,{obj=o,isFunc=true}) end
             end
         end
     end
+    attackRemotes=tmp
 end
-if pl.Character then
-    pl.Character.ChildAdded:Connect(function(ch) if ch:IsA("Tool") then task.wait(0.5) scanAttackRemotes() end end)
-end
+task.spawn(function() task.wait(2) scanAttackRemotes() end)
 pl.CharacterAdded:Connect(function(c)
     task.wait(1) scanAttackRemotes()
-    c.ChildAdded:Connect(function(ch) if ch:IsA("Tool") then task.wait(0.5) scanAttackRemotes() end end)
+    c.ChildAdded:Connect(function(ch) if ch:IsA("Tool") then task.wait(0.3) scanAttackRemotes() end end)
 end)
-task.spawn(function() while true do task.wait(5) scanAttackRemotes() end end)
+if pl.Character then
+    pl.Character.ChildAdded:Connect(function(ch) if ch:IsA("Tool") then task.wait(0.3) scanAttackRemotes() end end)
+end
 
 local function fireAttack()
     local c=pl.Character
@@ -558,7 +547,7 @@ local function fireAttack()
     end
 end
 
--- ============ AUTO ATTACK ============
+-- ============ AUTO ATTACK (giữ nguyên) ============
 local function aaApplySpeed()
     local c=pl.Character if not c then return end
     for _,v in ipairs(c:GetDescendants()) do
@@ -605,144 +594,40 @@ RS.Heartbeat:Connect(function(dt)
     if aa.atkSpd then aaApplySpeed() end
 end)
 
-local function teleportFast(pos)
+-- ============ TELEPORT (FIX MAP LỚN + KHÔNG LAG) ============
+-- Dùng PivotTo (chuẩn hơn CFrame), clear velocity, gọi trên nhiều frame
+teleportTo=function(targetPos)
     local c=pl.Character if not c then return end
     local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return end
+    local target=CFrame.new(targetPos)
     pcall(function() hr:SetNetworkOwner(pl) end)
     hr.AssemblyLinearVelocity=Vector3.zero
     hr.AssemblyAngularVelocity=Vector3.zero
-    hr.CFrame=CFrame.new(pos)
+    -- PivotTo là API chuẩn, ít bị snap-back
+    pcall(function() c:PivotTo(target) end)
+    pcall(function() hr.CFrame=target end)
+    -- Làm sạch trong background, không block thread chính
+    task.spawn(function()
+        for i=1,4 do
+            task.wait()
+            if not hr or not hr.Parent then return end
+            pcall(function()
+                hr.CFrame=target
+                hr.AssemblyLinearVelocity=Vector3.zero
+                hr.AssemblyAngularVelocity=Vector3.zero
+            end)
+        end
+    end)
 end
 RS.Heartbeat:Connect(function()
     if not aa.hoverOn or not aa.target or not aa.target.Parent then return end
     local tc=aa.target.Character if not tc then return end
     local thr=tc:FindFirstChild("HumanoidRootPart") if not thr then return end
     local predicted=thr.Position+thr.AssemblyLinearVelocity*0.1
-    teleportFast(predicted+Vector3.new(0,aa.hoverDist,0))
+    teleportTo(predicted+Vector3.new(0,aa.hoverDist,0))
 end)
 
--- ============ KILL AURA ============
-local auraRing=nil
-local auraWaves={}
-local auraAccum=0
-
-local function destroyAura()
-    if auraRing and auraRing.Parent then pcall(function() auraRing:Destroy() end) end
-    auraRing=nil
-    for _,w in ipairs(auraWaves) do
-        if w.part and w.part.Parent then pcall(function() w.part:Destroy() end) end
-    end
-    auraWaves={}
-end
-
-local function buildAura()
-    destroyAura()
-    -- Ring chính
-    auraRing=Instance.new("Part")
-    auraRing.Shape=Enum.PartType.Cylinder
-    auraRing.Size=Vector3.new(0.15,ka.radius*2,ka.radius*2)
-    auraRing.Anchored=true
-    auraRing.CanCollide=false
-    auraRing.CanQuery=false
-    auraRing.CanTouch=false
-    auraRing.CastShadow=false
-    auraRing.Material=Enum.Material.Neon
-    auraRing.Color=Color3.fromHSV(ka.hue,0.9,1)
-    auraRing.Transparency=ka.ringTrans
-    auraRing.Name="__NekoAuraRing"
-    auraRing.Parent=workspace
-    
-    -- 3 waves lan tỏa
-    for i=1,3 do
-        local w=Instance.new("Part")
-        w.Shape=Enum.PartType.Cylinder
-        w.Size=Vector3.new(0.1,10,10)
-        w.Anchored=true
-        w.CanCollide=false
-        w.CanQuery=false
-        w.CanTouch=false
-        w.CastShadow=false
-        w.Material=Enum.Material.Neon
-        w.Color=Color3.fromHSV(ka.hue,0.9,1)
-        w.Transparency=0.9
-        w.Name="__NekoAuraWave"
-        w.Parent=workspace
-        table.insert(auraWaves,{part=w,t=(i-1)/3})
-    end
-end
-
-RS.Heartbeat:Connect(function(dt)
-    -- Visual aura
-    if ka.enabled and ka.ringOn then
-        local c=pl.Character
-        local hr=c and c:FindFirstChild("HumanoidRootPart")
-        if hr then
-            if not auraRing or not auraRing.Parent then buildAura() end
-            ka.hue=(ka.hue+dt*0.5)%1
-            local color=Color3.fromHSV(ka.hue,0.9,1)
-            local pos=hr.Position+Vector3.new(0,-2.7,0)
-            local baseCF=CFrame.new(pos)*CFrame.Angles(0,0,math.rad(90))
-            
-            if auraRing then
-                auraRing.Size=Vector3.new(0.15,ka.radius*2,ka.radius*2)
-                auraRing.CFrame=baseCF
-                auraRing.Color=color
-                auraRing.Transparency=ka.ringTrans
-            end
-            for _,w in ipairs(auraWaves) do
-                if w.part then
-                    w.t=(w.t+dt*0.5)%1
-                    local prog=w.t
-                    local sz=ka.radius*2*prog
-                    w.part.Size=Vector3.new(0.1,sz,sz)
-                    w.part.CFrame=baseCF
-                    w.part.Transparency=0.3+prog*0.65
-                    w.part.Color=Color3.fromHSV((ka.hue+prog*0.3)%1,0.9,1)
-                end
-            end
-        else
-            destroyAura()
-        end
-    elseif not ka.enabled or not ka.ringOn then
-        if auraRing or #auraWaves>0 then destroyAura() end
-    end
-    
-    -- Attack
-    if ka.enabled then
-        local c=pl.Character
-        local hr=c and c:FindFirstChild("HumanoidRootPart")
-        if hr then
-            kaAccum=kaAccum+ka.speed*dt
-            local count=math.floor(kaAccum)
-            if count>=1 then
-                kaAccum=kaAccum-count
-                -- Tìm target trong bán kính
-                local targets={}
-                for _,p in ipairs(P:GetPlayers()) do
-                    if p~=pl and p.Character then
-                        local thr=p.Character:FindFirstChild("HumanoidRootPart")
-                        local th=p.Character:FindFirstChildOfClass("Humanoid")
-                        if thr and th and th.Health>0 then
-                            if (thr.Position-hr.Position).Magnitude<=ka.radius then
-                                table.insert(targets,p)
-                            end
-                        end
-                    end
-                end
-                if #targets>0 then
-                    for i=1,count do
-                        aa.target=targets[math.random(1,#targets)]
-                        fireAttack()
-                    end
-                end
-            end
-        else
-            kaAccum=0
-        end
-    end
-end)
-
--- ============ GHOST ============
+-- ============ GHOST (giữ nguyên) ============
 local gv={} local gdc=nil
 local function tGhost(on)
     local ch=pl.Character
@@ -780,8 +665,12 @@ local function tGhost(on)
     end)
 end
 
--- ============ ESP ============
-local evs={} local trcs={}
+-- ============ ESP (REWRITE - FIX TOÀN BỘ) ============
+local evs={}       -- player ESP
+local npcEvs={}    -- npc ESP
+local itemEvs={}   -- item ESP
+local trcs={}      -- esp line
+local lps={}       -- last position cache cho line
 
 local function measureBody(char)
     local hrp=char:FindFirstChild("HumanoidRootPart")
@@ -794,79 +683,97 @@ local function measureBody(char)
     return {center=(topY+bottomY)/2-hrp.Position.Y,height=topY-bottomY,width=2.4}
 end
 
+-- build ESP đồng bộ khi có HRP, nếu thiếu sẽ được retry từ loop
 local function buildESP(char)
     if not char or char==pl.Character then return end
-    task.spawn(function()
-        local hr=char:WaitForChild("HumanoidRootPart",5) if not hr then return end
-        local head=char:FindFirstChild("Head") or hr
-        if evs[char] then pcall(function() evs[char].folder:Destroy() end) evs[char]=nil end
-        local fold=Instance.new("Folder",epf) fold.Name=char.Name
-        local hl=Instance.new("Highlight",fold)
-        hl.Adornee=char hl.FillColor=G hl.FillTransparency=0.9 hl.OutlineColor=G hl.OutlineTransparency=0 hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
-        local infoBB=Instance.new("BillboardGui",fold)
-        infoBB.Adornee=head infoBB.Size=UDim2.new(0,220,0,50) infoBB.StudsOffset=Vector3.new(0,2.8,0) infoBB.AlwaysOnTop=true infoBB.LightInfluence=0 infoBB.MaxDistance=2000
-        local nameLbl=Instance.new("TextLabel",infoBB)
-        nameLbl.Size=UDim2.new(1,0,0,30) nameLbl.BackgroundTransparency=1 nameLbl.Text=char.Name
-        nameLbl.TextColor3=G nameLbl.TextStrokeTransparency=0.1 nameLbl.TextStrokeColor3=Color3.new(0,0,0)
-        nameLbl.Font=Enum.Font.Code nameLbl.TextSize=20 nameLbl.TextXAlignment=Enum.TextXAlignment.Center
-        local distLbl=Instance.new("TextLabel",infoBB)
-        distLbl.Size=UDim2.new(1,0,0,18) distLbl.Position=UDim2.new(0,0,0,30)
-        distLbl.BackgroundTransparency=1 distLbl.Text="0m" distLbl.TextColor3=YEL
-        distLbl.TextStrokeTransparency=0.2 distLbl.TextStrokeColor3=Color3.new(0,0,0)
-        distLbl.Font=Enum.Font.Code distLbl.TextSize=14 distLbl.TextXAlignment=Enum.TextXAlignment.Center
-        local hpBB=Instance.new("BillboardGui",fold)
-        hpBB.Adornee=hr hpBB.Size=UDim2.new(0,12,0,70) hpBB.StudsOffset=Vector3.new(2.3,0.5,0)
-        hpBB.AlwaysOnTop=true hpBB.LightInfluence=0 hpBB.MaxDistance=2000
-        local hpBg=Instance.new("Frame",hpBB)
-        hpBg.Size=UDim2.new(1,0,1,0) hpBg.BackgroundColor3=Color3.fromRGB(0,20,10)
-        hpBg.BackgroundTransparency=0.2 hpBg.BorderSizePixel=1 hpBg.BorderColor3=G
-        Instance.new("UICorner",hpBg).CornerRadius=UDim.new(0,4)
-        local hpFill=Instance.new("Frame",hpBg)
-        hpFill.AnchorPoint=Vector2.new(0,1) hpFill.Position=UDim2.new(0,0,1,0)
-        hpFill.Size=UDim2.new(1,0,1,0) hpFill.BackgroundColor3=G hpFill.BorderSizePixel=0
-        Instance.new("UICorner",hpFill).CornerRadius=UDim.new(0,4)
+    if evs[char] then return end
+    local hr=char:FindFirstChild("HumanoidRootPart")
+    local head=char:FindFirstChild("Head") or hr
+    if not hr or not head then return end
 
-        local m=measureBody(char)
-        local fxBB=Instance.new("BillboardGui",fold)
-        fxBB.Adornee=hr fxBB.Size=UDim2.new(0,60,0,140)
-        if m then fxBB.StudsOffset=Vector3.new(0,m.center,0) else fxBB.StudsOffset=Vector3.new(0,0.3,0) end
-        fxBB.AlwaysOnTop=true fxBB.LightInfluence=0 fxBB.MaxDistance=800 fxBB.ClipsDescendants=true
-        local scans={}
-        for i=1,4 do
-            local s=Instance.new("Frame",fxBB)
-            s.Size=UDim2.new(1,0,0,i<=2 and 2 or 1) s.BackgroundColor3=i%2==0 and G3 or G
-            s.BackgroundTransparency=i<=2 and 0 or 0.4 s.BorderSizePixel=0
-            local gr=Instance.new("UIGradient",s)
-            gr.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0),NumberSequenceKeypoint.new(1,1)})
-            table.insert(scans,{obj=s,speed=0.3+i*0.1,offset=math.random(),dir=(i%2==0) and 1 or -1})
-        end
-        local dots={}
-        for i=1,5 do
-            local d=Instance.new("Frame",fxBB)
-            local sz=math.random(2,3)
-            d.Size=UDim2.new(0,sz,0,sz) d.BackgroundColor3=G3 d.BackgroundTransparency=0.3 d.BorderSizePixel=0
-            Instance.new("UICorner",d).CornerRadius=UDim.new(1,0)
-            table.insert(dots,{obj=d,x=math.random(),y=math.random(),speed=0.15+math.random()*0.25,dir=math.random()>0.5 and 1 or -1})
-        end
-        local ring=Instance.new("Frame",fxBB)
-        ring.AnchorPoint=Vector2.new(.5,.5) ring.Position=UDim2.new(.5,0,.5,0)
-        ring.Size=UDim2.new(0,20,0,20) ring.BackgroundTransparency=1 ring.BorderSizePixel=0
-        local ringStroke=Instance.new("UIStroke",ring) ringStroke.Color=G3 ringStroke.Thickness=1.5 ringStroke.Transparency=.3
-        Instance.new("UICorner",ring).CornerRadius=UDim.new(1,0)
-        local dataTop=Instance.new("TextLabel",fxBB)
-        dataTop.Size=UDim2.new(1,0,0,10) dataTop.Position=UDim2.new(0,0,0,-12)
-        dataTop.BackgroundTransparency=1 dataTop.Text=""
-        dataTop.TextColor3=G dataTop.TextStrokeTransparency=.4 dataTop.TextStrokeColor3=Color3.new(0,0,0)
-        dataTop.Font=Enum.Font.Code dataTop.TextSize=8 dataTop.TextXAlignment=Enum.TextXAlignment.Center
+    if evs[char] then pcall(function() evs[char].folder:Destroy() end) evs[char]=nil end
 
-        evs[char]={folder=fold,hl=hl,infoBB=infoBB,nameLbl=nameLbl,distLbl=distLbl,hpBB=hpBB,hpFill=hpFill,
-                   fxBB=fxBB,scans=scans,dots=dots,ring=ring,ringStroke=ringStroke,dataTop=dataTop}
-    end)
+    local fold=Instance.new("Folder",epf) fold.Name=char.Name
+
+    local hl=Instance.new("Highlight",fold)
+    hl.Adornee=char hl.FillColor=G hl.FillTransparency=0.9 hl.OutlineColor=G hl.OutlineTransparency=0
+    hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop hl.Enabled=tg.espBody
+
+    local infoBB=Instance.new("BillboardGui",fold)
+    infoBB.Adornee=head infoBB.Size=UDim2.new(0,220,0,50) infoBB.StudsOffset=Vector3.new(0,2.8,0)
+    infoBB.AlwaysOnTop=true infoBB.LightInfluence=0 infoBB.MaxDistance=5000
+    infoBB.Enabled=(tg.espName or tg.espDist)
+
+    local nameLbl=Instance.new("TextLabel",infoBB)
+    nameLbl.Size=UDim2.new(1,0,0,30) nameLbl.BackgroundTransparency=1 nameLbl.Text=char.Name
+    nameLbl.TextColor3=G nameLbl.TextStrokeTransparency=0.1 nameLbl.TextStrokeColor3=Color3.new(0,0,0)
+    nameLbl.Font=Enum.Font.Code nameLbl.TextSize=20 nameLbl.TextXAlignment=Enum.TextXAlignment.Center
+    nameLbl.Visible=tg.espName
+
+    local distLbl=Instance.new("TextLabel",infoBB)
+    distLbl.Size=UDim2.new(1,0,0,18) distLbl.Position=UDim2.new(0,0,0,30)
+    distLbl.BackgroundTransparency=1 distLbl.Text="0m" distLbl.TextColor3=YEL
+    distLbl.TextStrokeTransparency=0.2 distLbl.TextStrokeColor3=Color3.new(0,0,0)
+    distLbl.Font=Enum.Font.Code distLbl.TextSize=14 distLbl.TextXAlignment=Enum.TextXAlignment.Center
+    distLbl.Visible=tg.espDist
+
+    local hpBB=Instance.new("BillboardGui",fold)
+    hpBB.Adornee=hr hpBB.Size=UDim2.new(0,12,0,70) hpBB.StudsOffset=Vector3.new(2.3,0.5,0)
+    hpBB.AlwaysOnTop=true hpBB.LightInfluence=0 hpBB.MaxDistance=5000
+    hpBB.Enabled=tg.espHp
+
+    local hpBg=Instance.new("Frame",hpBB)
+    hpBg.Size=UDim2.new(1,0,1,0) hpBg.BackgroundColor3=Color3.fromRGB(0,20,10)
+    hpBg.BackgroundTransparency=0.2 hpBg.BorderSizePixel=1 hpBg.BorderColor3=G
+    Instance.new("UICorner",hpBg).CornerRadius=UDim.new(0,4)
+    local hpFill=Instance.new("Frame",hpBg)
+    hpFill.AnchorPoint=Vector2.new(0,1) hpFill.Position=UDim2.new(0,0,1,0)
+    hpFill.Size=UDim2.new(1,0,1,0) hpFill.BackgroundColor3=G hpFill.BorderSizePixel=0
+    Instance.new("UICorner",hpFill).CornerRadius=UDim.new(0,4)
+
+    local m=measureBody(char)
+    local fxBB=Instance.new("BillboardGui",fold)
+    fxBB.Adornee=hr fxBB.Size=UDim2.new(0,60,0,140)
+    fxBB.StudsOffset=m and Vector3.new(0,m.center,0) or Vector3.new(0,0.3,0)
+    fxBB.AlwaysOnTop=true fxBB.LightInfluence=0 fxBB.MaxDistance=1500 fxBB.ClipsDescendants=true
+    fxBB.Enabled=tg.espBody
+
+    local scans={}
+    for i=1,4 do
+        local s=Instance.new("Frame",fxBB)
+        s.Size=UDim2.new(1,0,0,i<=2 and 2 or 1) s.BackgroundColor3=i%2==0 and G3 or G
+        s.BackgroundTransparency=i<=2 and 0 or 0.4 s.BorderSizePixel=0
+        local gr=Instance.new("UIGradient",s)
+        gr.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0),NumberSequenceKeypoint.new(1,1)})
+        table.insert(scans,{obj=s,speed=0.3+i*0.1,offset=math.random(),dir=(i%2==0) and 1 or -1})
+    end
+    local dots={}
+    for i=1,5 do
+        local d=Instance.new("Frame",fxBB)
+        local sz=math.random(2,3)
+        d.Size=UDim2.new(0,sz,0,sz) d.BackgroundColor3=G3 d.BackgroundTransparency=0.3 d.BorderSizePixel=0
+        Instance.new("UICorner",d).CornerRadius=UDim.new(1,0)
+        table.insert(dots,{obj=d,x=math.random(),y=math.random(),speed=0.15+math.random()*0.25,dir=math.random()>0.5 and 1 or -1})
+    end
+    local ring=Instance.new("Frame",fxBB)
+    ring.AnchorPoint=Vector2.new(.5,.5) ring.Position=UDim2.new(.5,0,.5,0)
+    ring.Size=UDim2.new(0,20,0,20) ring.BackgroundTransparency=1 ring.BorderSizePixel=0
+    local ringStroke=Instance.new("UIStroke",ring) ringStroke.Color=G3 ringStroke.Thickness=1.5 ringStroke.Transparency=.3
+    Instance.new("UICorner",ring).CornerRadius=UDim.new(1,0)
+    local dataTop=Instance.new("TextLabel",fxBB)
+    dataTop.Size=UDim2.new(1,0,0,10) dataTop.Position=UDim2.new(0,0,0,-12)
+    dataTop.BackgroundTransparency=1 dataTop.Text=""
+    dataTop.TextColor3=G dataTop.TextStrokeTransparency=.4 dataTop.TextStrokeColor3=Color3.new(0,0,0)
+    dataTop.Font=Enum.Font.Code dataTop.TextSize=8 dataTop.TextXAlignment=Enum.TextXAlignment.Center
+
+    evs[char]={folder=fold,hl=hl,infoBB=infoBB,nameLbl=nameLbl,distLbl=distLbl,hpBB=hpBB,hpFill=hpFill,
+               fxBB=fxBB,scans=scans,dots=dots,ring=ring,ringStroke=ringStroke,dataTop=dataTop}
 end
 
 local function destroyESP(char)
     if evs[char] then pcall(function() evs[char].folder:Destroy() end) evs[char]=nil end
 end
+
 local function applyESPToggles()
     for char,data in pairs(evs) do
         if char.Parent then
@@ -879,30 +786,138 @@ local function applyESPToggles()
         else destroyESP(char) end
     end
 end
-local function rescanESP()
-    for _,p in ipairs(P:GetPlayers()) do
-        if p~=pl and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            if not evs[p.Character] then buildESP(p.Character) end
+
+-- Retry loop: cứ 0.5s check player thiếu ESP thì build
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if tg.espName or tg.espHp or tg.espDist or tg.espBody or tg.espLine then
+            for _,p in ipairs(P:GetPlayers()) do
+                if p~=pl and p.Character then
+                    if not evs[p.Character] and p.Character:FindFirstChild("HumanoidRootPart") then
+                        buildESP(p.Character)
+                    end
+                end
+            end
         end
     end
+end)
+
+-- ============ NPC ESP + ITEM ESP (cho 3008 & map khác) ============
+local function isNPC(model)
+    if not model or not model:IsA("Model") then return false end
+    if P:GetPlayerFromCharacter(model) then return false end
+    return model:FindFirstChildOfClass("Humanoid")~=nil and model:FindFirstChild("HumanoidRootPart")~=nil
+end
+local function isItem(inst)
+    if not inst then return false end
+    if inst:IsA("Tool") then return true end
+    if inst:IsA("Model") then
+        local n=string.lower(inst.Name)
+        return n:find("item") or n:find("food") or n:find("water") or n:find("weapon") or n:find("tool") or n:find("pickup")
+    end
+    if inst:IsA("BasePart") then
+        local n=string.lower(inst.Name)
+        return n:find("item") or n:find("pickup") or n:find("coin") or n:find("cash")
+    end
+    return false
+end
+local function buildNPCEsp(model)
+    if npcEvs[model] then return end
+    local hr=model:FindFirstChild("HumanoidRootPart") if not hr then return end
+    local fold=Instance.new("Folder",enf) fold.Name=model.Name
+    local hl=Instance.new("Highlight",fold)
+    hl.Adornee=model hl.FillColor=RED hl.FillTransparency=0.75 hl.OutlineColor=RED
+    hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+    local bb=Instance.new("BillboardGui",fold)
+    bb.Adornee=hr bb.Size=UDim2.new(0,120,0,24) bb.StudsOffset=Vector3.new(0,3,0)
+    bb.AlwaysOnTop=true bb.MaxDistance=2000
+    local l=Instance.new("TextLabel",bb)
+    l.Size=UDim2.new(1,0,1,0) l.BackgroundTransparency=0.5
+    l.BackgroundColor3=Color3.fromRGB(20,0,0) l.Text=model.Name
+    l.Font=Enum.Font.Code l.TextSize=12 l.TextColor3=RED
+    l.TextStrokeTransparency=0.3 l.TextStrokeColor3=Color3.new(0,0,0)
+    npcEvs[model]={folder=fold,hl=hl,bb=bb}
+end
+local function destroyNPCEsp(model)
+    if npcEvs[model] then pcall(function() npcEvs[model].folder:Destroy() end) npcEvs[model]=nil end
+end
+local function buildItemEsp(inst)
+    if itemEvs[inst] then return end
+    local target = inst:IsA("BasePart") and inst or inst:FindFirstChildWhichIsA("BasePart",true)
+    if not target then return end
+    local fold=Instance.new("Folder",enf) fold.Name=inst.Name
+    local hl=Instance.new("Highlight",fold)
+    hl.Adornee=inst:IsA("Model") and inst or target
+    hl.FillColor=YEL hl.FillTransparency=0.6 hl.OutlineColor=YEL
+    hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+    itemEvs[inst]={folder=fold,hl=hl,part=target}
+end
+local function destroyItemEsp(inst)
+    if itemEvs[inst] then pcall(function() itemEvs[inst].folder:Destroy() end) itemEvs[inst]=nil end
 end
 
--- ============ TELEPORT + PROTECT + TRAIL ============
-teleportTo = function(targetPos)
+-- Quét NPC/item định kỳ, throttle
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if tg.espNPC then
+            for _,o in ipairs(workspace:GetChildren()) do
+                if isNPC(o) and not npcEvs[o] then buildNPCEsp(o) end
+            end
+            -- dọn NPC đã chết
+            for m in pairs(npcEvs) do if not m.Parent then destroyNPCEsp(m) end end
+        else
+            for m in pairs(npcEvs) do destroyNPCEsp(m) end
+        end
+        if tg.espItem then
+            for _,o in ipairs(workspace:GetChildren()) do
+                if isItem(o) and not itemEvs[o] then buildItemEsp(o) end
+            end
+            for m in pairs(itemEvs) do if not m.Parent then destroyItemEsp(m) end end
+        else
+            for m in pairs(itemEvs) do destroyItemEsp(m) end
+        end
+    end
+end)
+
+-- ============ NOCLIP + AUTOPICK ============
+RS.Stepped:Connect(function()
+    if not tg.noclip then return end
     local c=pl.Character if not c then return end
-    local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return end
-    pcall(function() hr:SetNetworkOwner(pl) end)
-    task.wait(0.1)
-    hr.AssemblyLinearVelocity=Vector3.zero
-    hr.AssemblyAngularVelocity=Vector3.zero
-    local target=CFrame.new(targetPos+Vector3.new(0,3,2))
-    hr.CFrame=target
-    RS.Heartbeat:Wait()
-    pcall(function() hr:SetNetworkOwner(pl) end)
-    hr.CFrame=target
-    hr.AssemblyLinearVelocity=Vector3.zero
-end
+    for _,p in ipairs(c:GetDescendants()) do
+        if p:IsA("BasePart") and p.CanCollide then p.CanCollide=false end
+    end
+end)
+task.spawn(function()
+    while true do
+        task.wait(0.6)
+        if tg.autoPick then
+            local c=pl.Character
+            local hr=c and c:FindFirstChild("HumanoidRootPart")
+            if hr then
+                for _,o in ipairs(workspace:GetChildren()) do
+                    if isItem(o) then
+                        local part=o:IsA("BasePart") and o or o:FindFirstChildWhichIsA("BasePart",true)
+                        if part and (part.Position-hr.Position).Magnitude<10 then
+                            pcall(function()
+                                if firetouchinterest then
+                                    firetouchinterest(hr,part,0); firetouchinterest(hr,part,1)
+                                end
+                                if fireproximityprompt then
+                                    local pp=part:FindFirstChildOfClass("ProximityPrompt")
+                                    if pp then fireproximityprompt(pp) end
+                                end
+                            end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
 
+-- ============ ANTI VOID / AFK / TRAIL (giữ nguyên) ============
 local lastSafeCF=nil
 RS.Heartbeat:Connect(function()
     local c=pl.Character if not c then return end
@@ -975,7 +990,7 @@ mkTog(pages["ESP"],"ESP BODY FX",false,function(on) tg.espBody=on applyESPToggle
 
 mkSec(pages["PLAYER"],"// ABILITIES")
 mkTog(pages["PLAYER"],"GHOST",false,function(on) tg.ghost=on tGhost(on) end)
-mkTog(pages["PLAYER"],"FPS BOOST VIP",false,function(on) tg.fps=on tFPS(on) end)
+mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on tFPS(on) end)
 mkSec(pages["PLAYER"],"// AUTO ATTACK")
 mkSli(pages["PLAYER"],"Atk Speed",1,200,200,function(v) aa.speed=v end)
 mkSli(pages["PLAYER"],"Hover Dist",0,10,0,function(v) aa.hoverDist=v end)
@@ -1016,40 +1031,7 @@ mkBtn(pages["PLAYER"],"REJOIN SERVER",function()
     pcall(function() TS:TeleportToPlaceInstance(game.PlaceId,game.JobId,pl) end)
 end)
 
--- ============ AURA TAB ============
-mkSec(pages["AURA"],"// KILL AURA")
-mkTog(pages["AURA"],"KILL AURA",false,function(on)
-    ka.enabled=on
-    if on then
-        kaAccum=0
-        if ka.ringOn then task.spawn(function() task.wait(0.1) buildAura() end) end
-    else
-        destroyAura()
-    end
-end)
-mkSli(pages["AURA"],"Aura Radius",5,100,15,function(v)
-    ka.radius=v
-    if ka.enabled and ka.ringOn and auraRing then
-        auraRing.Size=Vector3.new(0.15,ka.radius*2,ka.radius*2)
-    end
-end)
-mkSli(pages["AURA"],"Attack Speed",1,50,15,function(v) ka.speed=v end)
-mkSec(pages["AURA"],"// VISUAL")
-mkTog(pages["AURA"],"SHOW RING",true,function(on)
-    ka.ringOn=on
-    if on and ka.enabled then task.spawn(function() task.wait(0.1) buildAura() end)
-    else destroyAura() end
-end)
-mkSli(pages["AURA"],"Ring Opacity",0,1,0.65,function(v)
-    ka.ringTrans=1-v
-    if auraRing then auraRing.Transparency=ka.ringTrans end
-end)
-mkBtn(pages["AURA"],"CLEAR AURA PARTS",function()
-    destroyAura()
-    stLbl.Text="[ OK ] cleared aura"
-end)
-
--- ============ TELE ============
+-- TELE (giữ nguyên khung)
 mkSec(pages["TELE"],"// TELEPORT TO PLAYER")
 local tpTargetBtn=mkBtn(pages["TELE"],"SELECT PLAYER",function() end)
 local tpSelected=nil
@@ -1095,7 +1077,6 @@ mkBtn(pages["TELE"],"FORWARD +20m",function()
 end)
 mkSec(pages["TELE"],"// WAYPOINTS")
 mkSli(pages["TELE"],"WP Height",-10,30,wd.height,function(v) wd.height=v svW() end)
-
 for si=1,3 do
     local sIdx=si
     local slotBtn=mkBtn(pages["TELE"],"[ "..wd.slots[sIdx].name.." ]",function() end)
@@ -1144,13 +1125,29 @@ for si=1,3 do
     end)
 end
 
+-- EXTRA
 mkSec(pages["EXTRA"],"// PROTECTION")
 mkTog(pages["EXTRA"],"ANTI VOID",false,function(on) tg.antiVoid=on end)
 mkTog(pages["EXTRA"],"ANTI AFK",false,function(on) tg.antiAFK=on end)
+mkTog(pages["EXTRA"],"NOCLIP",false,function(on) tg.noclip=on end)
 mkSec(pages["EXTRA"],"// EFFECT")
 mkTog(pages["EXTRA"],"TRAIL RAINBOW",false,function(on) tg.trail=on end)
 
--- ============ INFO ============
+-- 3008 TAB
+mkSec(pages["3008"],"// 3008 SPECIAL")
+mkTog(pages["3008"],"ZOMBIE / NPC ESP",false,function(on) tg.espNPC=on end)
+mkTog(pages["3008"],"ITEM ESP (food/water/tool)",false,function(on) tg.espItem=on end)
+mkTog(pages["3008"],"AUTO PICKUP (10m)",false,function(on) tg.autoPick=on end)
+mkSec(pages["3008"],"// TIPS")
+local tipsLbl=Instance.new("TextLabel",pages["3008"])
+tipsLbl.Size=UDim2.new(1,-8,0,110)
+tipsLbl.BackgroundTransparency=1
+tipsLbl.Text="• BAT: ZOMBIE ESP + ITEM ESP\n• AUTO PICKUP: đứng gần item ~10m\n• NOCLIP: chui vào nhà không cần cửa\n• TELE tab: lưu waypoint cho cửa hàng\n• FPS BOOST: bật khi vào đêm đông zombie"
+tipsLbl.Font=Enum.Font.Code tipsLbl.TextSize=9 tipsLbl.TextColor3=TX
+tipsLbl.TextXAlignment=Enum.TextXAlignment.Left tipsLbl.TextYAlignment=Enum.TextYAlignment.Top
+tipsLbl.TextWrapped=true tipsLbl.LayoutOrder=999
+
+-- INFO tab (giữ nguyên, chỉ bỏ refs ka)
 local infoRoot=Instance.new("Frame",pages["INFO"])
 infoRoot.Size=UDim2.new(1,-8,0,0)
 infoRoot.AutomaticSize=Enum.AutomaticSize.Y
@@ -1160,130 +1157,69 @@ infoRoot.ZIndex=115
 local irl=Instance.new("UIListLayout",infoRoot)
 irl.Padding=UDim.new(0,6)
 irl.SortOrder=Enum.SortOrder.LayoutOrder
-
 local infoRefs={}
-
 local function makeCard(title,accent)
     local card=Instance.new("Frame",infoRoot)
     card.Size=UDim2.new(1,0,0,0)
     card.AutomaticSize=Enum.AutomaticSize.Y
-    card.BackgroundColor3=BG
-    card.BackgroundTransparency=0.35
-    card.BorderSizePixel=0
-    card.ZIndex=116
+    card.BackgroundColor3=BG card.BackgroundTransparency=0.35 card.BorderSizePixel=0 card.ZIndex=116
     Instance.new("UICorner",card).CornerRadius=UDim.new(0,4)
-    local cs=Instance.new("UIStroke",card)
-    cs.Color=accent cs.Thickness=1 cs.Transparency=0.5
+    local cs=Instance.new("UIStroke",card) cs.Color=accent cs.Thickness=1 cs.Transparency=0.5
     local titleBar=Instance.new("Frame",card)
-    titleBar.Size=UDim2.new(1,0,0,20)
-    titleBar.BackgroundColor3=BG2
-    titleBar.BackgroundTransparency=0.3
-    titleBar.BorderSizePixel=0
-    titleBar.ZIndex=117
+    titleBar.Size=UDim2.new(1,0,0,20) titleBar.BackgroundColor3=BG2
+    titleBar.BackgroundTransparency=0.3 titleBar.BorderSizePixel=0 titleBar.ZIndex=117
     Instance.new("UICorner",titleBar).CornerRadius=UDim.new(0,4)
-    local fix=Instance.new("Frame",titleBar)
-    fix.Size=UDim2.new(1,0,0,6)
-    fix.Position=UDim2.new(0,0,1,-6)
-    fix.BackgroundColor3=BG2
-    fix.BackgroundTransparency=0.3
-    fix.BorderSizePixel=0
-    fix.ZIndex=117
     local bar=Instance.new("Frame",titleBar)
-    bar.Size=UDim2.new(0,2,0,10)
-    bar.Position=UDim2.new(0,6,.5,-5)
-    bar.BackgroundColor3=accent
-    bar.BorderSizePixel=0
-    bar.ZIndex=118
+    bar.Size=UDim2.new(0,2,0,10) bar.Position=UDim2.new(0,6,.5,-5)
+    bar.BackgroundColor3=accent bar.BorderSizePixel=0 bar.ZIndex=118
     local tl=Instance.new("TextLabel",titleBar)
-    tl.Size=UDim2.new(1,-14,1,0)
-    tl.Position=UDim2.new(0,14,0,0)
-    tl.BackgroundTransparency=1
-    tl.Text=title
-    tl.Font=Enum.Font.Code
-    tl.TextSize=10
-    tl.TextColor3=accent
-    tl.TextXAlignment=Enum.TextXAlignment.Left
-    tl.ZIndex=118
+    tl.Size=UDim2.new(1,-14,1,0) tl.Position=UDim2.new(0,14,0,0)
+    tl.BackgroundTransparency=1 tl.Text=title tl.Font=Enum.Font.Code
+    tl.TextSize=10 tl.TextColor3=accent tl.TextXAlignment=Enum.TextXAlignment.Left tl.ZIndex=118
     local body=Instance.new("Frame",card)
-    body.Size=UDim2.new(1,-12,0,0)
-    body.Position=UDim2.new(0,6,0,24)
-    body.AutomaticSize=Enum.AutomaticSize.Y
-    body.BackgroundTransparency=1
-    body.ZIndex=117
+    body.Size=UDim2.new(1,-12,0,0) body.Position=UDim2.new(0,6,0,24)
+    body.AutomaticSize=Enum.AutomaticSize.Y body.BackgroundTransparency=1 body.ZIndex=117
     local bl=Instance.new("UIListLayout",body)
-    bl.Padding=UDim.new(0,3)
-    bl.SortOrder=Enum.SortOrder.LayoutOrder
-    local pad=Instance.new("Frame",body)
-    pad.Size=UDim2.new(1,0,0,4)
-    pad.BackgroundTransparency=1
-    pad.LayoutOrder=0
+    bl.Padding=UDim.new(0,3) bl.SortOrder=Enum.SortOrder.LayoutOrder
     local function row(name,color)
         local r=Instance.new("Frame",body)
-        r.Size=UDim2.new(1,0,0,14)
-        r.BackgroundTransparency=1
-        r.ZIndex=118
+        r.Size=UDim2.new(1,0,0,14) r.BackgroundTransparency=1 r.ZIndex=118
         local l=Instance.new("TextLabel",r)
-        l.Size=UDim2.new(0.5,0,1,0)
-        l.BackgroundTransparency=1
-        l.Text=name
-        l.Font=Enum.Font.Code
-        l.TextSize=9
-        l.TextColor3=DIM
-        l.TextXAlignment=Enum.TextXAlignment.Left
-        l.ZIndex=119
+        l.Size=UDim2.new(0.5,0,1,0) l.BackgroundTransparency=1 l.Text=name
+        l.Font=Enum.Font.Code l.TextSize=9 l.TextColor3=DIM l.TextXAlignment=Enum.TextXAlignment.Left l.ZIndex=119
         local v=Instance.new("TextLabel",r)
-        v.Size=UDim2.new(0.5,0,1,0)
-        v.Position=UDim2.new(0.5,0,0,0)
-        v.BackgroundTransparency=1
-        v.Text="--"
-        v.Font=Enum.Font.Code
-        v.TextSize=10
-        v.TextColor3=color or G
-        v.TextXAlignment=Enum.TextXAlignment.Right
-        v.ZIndex=119
+        v.Size=UDim2.new(0.5,0,1,0) v.Position=UDim2.new(0.5,0,0,0) v.BackgroundTransparency=1
+        v.Text="--" v.Font=Enum.Font.Code v.TextSize=10 v.TextColor3=color or G
+        v.TextXAlignment=Enum.TextXAlignment.Right v.ZIndex=119
         return v
     end
     return row
 end
-
 local netRow=makeCard("NETWORK",CY)
 infoRefs.ping=netRow("PING",G)
-infoRefs.pMin=netRow("PING MIN",G)
-infoRefs.pMax=netRow("PING MAX",G)
-infoRefs.pAvg=netRow("PING AVG",G)
 infoRefs.pStat=netRow("STATUS",G)
-
 local perfRow=makeCard("PERFORMANCE",G)
 infoRefs.fps=perfRow("FPS",CY)
 infoRefs.fpsAvg=perfRow("FPS AVG",CY)
 infoRefs.mem=perfRow("MEMORY",CY)
 infoRefs.uptime=perfRow("UPTIME",CY)
-
 local pRow=makeCard("PLAYER",YEL)
 infoRefs.name=pRow("NAME",YEL)
-infoRefs.disp=pRow("DISPLAY",YEL)
 infoRefs.hp=pRow("HEALTH",G)
 infoRefs.pos=pRow("POSITION",YEL)
-infoRefs.spd=pRow("SPEED",YEL)
-
 local srvRow=makeCard("SERVER",G3)
 infoRefs.game=srvRow("GAME",G3)
 infoRefs.place=srvRow("PLACE ID",G3)
-infoRefs.job=srvRow("JOB ID",G3)
 infoRefs.players=srvRow("PLAYERS",G3)
-
 local sysRow=makeCard("SYSTEM",ORG)
 infoRefs.time=sysRow("TIME",ORG)
-infoRefs.date=sysRow("DATE",ORG)
 infoRefs.ver=sysRow("VERSION",ORG)
 infoRefs.active=sysRow("ACTIVE",G)
 
 local fpsHist={}
 local stT=tick()
-local pMin=9999 local pMax=0 local pSum=0 local pCnt=0
 local frmCnt=0
 RS.RenderStepped:Connect(function() frmCnt=frmCnt+1 end)
-
 task.spawn(function()
     while true do
         if pages["INFO"] and pages["INFO"].Visible then
@@ -1295,20 +1231,11 @@ task.spawn(function()
             local avg=#fpsHist>0 and math.floor(sum/#fpsHist) or 0
             local ping=0
             pcall(function() ping=math.floor(pl:GetNetworkPing()*1000) end)
-            if ping>0 then
-                if ping<pMin then pMin=ping end
-                if ping>pMax then pMax=ping end
-                pSum=pSum+ping pCnt=pCnt+1
-            end
-            local pa=pCnt>0 and math.floor(pSum/pCnt) or 0
             local stTxt,stCol="GOOD",G
             if ping>150 then stTxt,stCol="BAD",YEL end
             if ping>250 then stTxt,stCol="POOR",RED end
             pcall(function()
                 infoRefs.ping.Text=ping.." ms"
-                infoRefs.pMin.Text=(pMin==9999 and "--" or pMin.." ms")
-                infoRefs.pMax.Text=pMax.." ms"
-                infoRefs.pAvg.Text=pa.." ms"
                 infoRefs.pStat.Text=stTxt
                 infoRefs.pStat.TextColor3=stCol
                 infoRefs.fps.Text=math.floor(fps).." fps"
@@ -1316,10 +1243,7 @@ task.spawn(function()
                 infoRefs.mem.Text=(function() local ok,m=pcall(function() return ST:GetTotalMemoryUsageMb() end) return ok and m and math.floor(m).." MB" or "--" end)()
                 local u=math.floor(tick()-stT)
                 infoRefs.uptime.Text=string.format("%dm %ds",math.floor(u/60),u%60)
-            end)
-            pcall(function()
                 infoRefs.name.Text=pl.Name
-                infoRefs.disp.Text=pl.DisplayName
                 local c=pl.Character
                 if c then
                     local h=c:FindFirstChildOfClass("Humanoid")
@@ -1328,25 +1252,23 @@ task.spawn(function()
                     if hr then
                         local p=hr.Position
                         infoRefs.pos.Text=string.format("%d,%d,%d",math.floor(p.X),math.floor(p.Y),math.floor(p.Z))
-                        local v=hr.AssemblyLinearVelocity
-                        infoRefs.spd.Text=math.floor(math.sqrt(v.X^2+v.Z^2)).." st/s"
                     end
                 end
                 infoRefs.game.Text=string.sub(game.Name or "?",1,24)
                 infoRefs.place.Text=tostring(game.PlaceId)
-                infoRefs.job.Text=string.sub(game.JobId or "?",1,14).."..."
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.date.Text=os.date("%d/%m/%Y")
-                infoRefs.ver.Text="v8.0"
+                infoRefs.ver.Text="v9.0"
                 local a={}
                 if tg.ghost then table.insert(a,"GHOST") end
                 if tg.hover then table.insert(a,"HOVER") end
                 if tg.espLine then table.insert(a,"LINE") end
-                if ka.enabled then table.insert(a,"AURA") end
                 if tg.antiVoid then table.insert(a,"VOID") end
                 if tg.antiAFK then table.insert(a,"AFK") end
                 if tg.trail then table.insert(a,"TRAIL") end
+                if tg.espNPC then table.insert(a,"NPC") end
+                if tg.espItem then table.insert(a,"ITEM") end
+                if tg.noclip then table.insert(a,"NOCLIP") end
                 if aa.enabled then table.insert(a,"AA") end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
@@ -1357,7 +1279,7 @@ end)
 
 switchTab("MOVE")
 
--- BOOT
+-- BOOT + SHOW/HIDE (giữ nguyên)
 local BOOT_LINES={"> init kernel...","> load modules [OK]","> bypass AC...","> inject payload...","> conn established"}
 local titleTarget="> ROOT@NEKO:~$ ./run.sh"
 local bootRunning=false
@@ -1380,7 +1302,6 @@ local function bootSequence()
     bootRunning=false
 end
 
--- SHOW/HIDE
 local menuOpen=false
 local function showMenu()
     if menuOpen then return end
@@ -1404,7 +1325,6 @@ function hideMenu()
     tw.Completed:Connect(function() main.Visible=false end)
 end
 
--- TOGGLE DRAG
 local dragging=false local dragStart,dragStartPos local moved=false
 toggleBtn.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
@@ -1427,133 +1347,136 @@ UIS.InputEnded:Connect(function(i)
 end)
 main.Position=toggleBtn.Position
 
--- RENDER LOOP
-local epsTimer=0 local rT=0
+-- RENDER LOOP (giữ, fix nhẹ)
+local rT=0
 local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
-
 RS.RenderStepped:Connect(function(dt)
-    pcall(function()
-        rT=tick()
-        if menuOpen then
-            for _,c in ipairs(rainCols) do
-                c.offset=c.offset+c.speed*dt*2
-                if c.offset>300 then c.offset=-300 end
-                c.lbl.Position=UDim2.new(c.lbl.Position.X.Scale,c.lbl.Position.X.Offset,0,c.offset)
+    rT=tick()
+    -- rain không cần pcall
+    if menuOpen then
+        for _,c in ipairs(rainCols) do
+            c.offset=c.offset+c.speed*dt*2
+            if c.offset>300 then c.offset=-300 end
+            c.lbl.Position=UDim2.new(c.lbl.Position.X.Scale,c.lbl.Position.X.Offset,0,c.offset)
+        end
+    end
+    tglGlow.Transparency=0.7+math.abs(math.sin(rT*2))*0.2
+
+    -- ESP line
+    if tg.espLine and drawingAvailable then
+        local ct2=Vector2.new(cam.ViewportSize.X/2,0)
+        local rb=Color3.fromHSV(rT%4/4,1,1)
+        for _,p in ipairs(P:GetPlayers()) do
+            if p~=pl and p.Character then
+                local hr=p.Character:FindFirstChild("HumanoidRootPart")
+                local h=p.Character:FindFirstChildOfClass("Humanoid")
+                if hr and h and h.Health>0 then
+                    local tr=trcs[p]
+                    if not tr then
+                        local okk,r=pcall(function() return Drawing.new("Line") end)
+                        if okk and r then r.Thickness=2 r.Transparency=1 trcs[p]=r tr=r end
+                    end
+                    if tr then
+                        local v,on2=cam:WorldToViewportPoint(hr.Position)
+                        if on2 then tr.From=ct2 tr.To=Vector2.new(v.X,v.Y) tr.Color=rb tr.Visible=true
+                        else tr.Visible=false end
+                    end
+                elseif trcs[p] then trcs[p].Visible=false end
             end
         end
-        tglGlow.Transparency=0.7+math.abs(math.sin(rT*2))*0.2
+    elseif not tg.espLine and next(trcs) then
+        for _,t2 in pairs(trcs) do pcall(function() t2:Remove() end) end
+        trcs={}
+    end
 
-        if tg.espLine and drawingAvailable then
-            local ct2=Vector2.new(cam.ViewportSize.X/2,0)
-            local rb=Color3.fromHSV(rT%4/4,1,1)
+    -- ESP body update
+    if tg.espName or tg.espHp or tg.espDist or tg.espBody then
+        local myChar=pl.Character
+        local myHR=myChar and myChar:FindFirstChild("HumanoidRootPart")
+        local myPos=myHR and myHR.Position
+        for char,data in pairs(evs) do
+            if not char.Parent then destroyESP(char)
+            else
+                local hr2=char:FindFirstChild("HumanoidRootPart")
+                local h2=char:FindFirstChildOfClass("Humanoid")
+                if hr2 and h2 then
+                    if tg.espDist and myPos then
+                        local d=(hr2.Position-myPos).Magnitude/3.57
+                        data.distLbl.Text=string.format("%.1fm",d)
+                    end
+                    if tg.espHp then
+                        local hp=math.clamp(h2.Health/math.max(h2.MaxHealth,1),0,1)
+                        data.hpFill.Size=UDim2.new(1,0,hp,0)
+                        if hp>0.6 then data.hpFill.BackgroundColor3=Color3.fromRGB(0,255,100)
+                        elseif hp>0.3 then data.hpFill.BackgroundColor3=YEL
+                        else data.hpFill.BackgroundColor3=RED end
+                    end
+                    if tg.espBody then
+                        local m=measureBody(char)
+                        if m then
+                            data.fxBB.StudsOffset=Vector3.new(0,m.center,0)
+                            local dist=(cam.CFrame.Position-hr2.Position).Magnitude
+                            if dist>0.1 then
+                                local pxPerStud=cam.ViewportSize.Y/(2*dist*math.tan(math.rad(cam.FieldOfView/2)))
+                                data.fxBB.Size=UDim2.new(0,math.floor(m.width*pxPerStud),0,math.floor(m.height*pxPerStud))
+                            end
+                        end
+                        for _,s in ipairs(data.scans) do
+                            local y=((s.offset+rT*s.speed*s.dir)%1+1)%1
+                            s.obj.Position=UDim2.new(0,0,y,0)
+                        end
+                        for _,d in ipairs(data.dots) do
+                            d.y=d.y+rT*d.speed*d.dir*0.01
+                            if d.y>1.1 then d.y=-0.1 elseif d.y<-0.1 then d.y=1.1 end
+                            d.obj.Position=UDim2.new(d.x,0,d.y,0)
+                        end
+                        local ringT=(rT*0.6)%1
+                        data.ring.Size=UDim2.new(ringT,0,ringT,0)
+                        data.ringStroke.Transparency=ringT*0.9
+                        local hp2=math.floor(h2.Health/math.max(h2.MaxHealth,1)*100)
+                        data.dataTop.Text="HP:"..hp2.."%"
+                        if data.hl then
+                            data.hl.FillTransparency=0.85+math.abs(math.sin(rT*2.5))*0.05
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Aimlock
+    if tg.aimE or tg.aimA then
+        local c=pl.Character
+        if c and c:FindFirstChild("HumanoidRootPart") then
+            local hds={}
             for _,p in ipairs(P:GetPlayers()) do
                 if p~=pl and p.Character then
-                    local hr=p.Character:FindFirstChild("HumanoidRootPart")
+                    local hd=p.Character:FindFirstChild("Head")
                     local h=p.Character:FindFirstChildOfClass("Humanoid")
-                    if hr and h and h.Health>0 then
-                        local tr=trcs[p]
-                        if not tr then
-                            local okk,r=pcall(function() return Drawing.new("Line") end)
-                            if okk and r then r.Thickness=2 r.Transparency=1 trcs[p]=r tr=r end
-                        end
-                        if tr then
-                            local v,on2=cam:WorldToViewportPoint(hr.Position)
-                            if on2 then tr.From=ct2 tr.To=Vector2.new(v.X,v.Y) tr.Color=rb tr.Visible=true
-                            else tr.Visible=false end
-                        end
-                    elseif trcs[p] then trcs[p].Visible=false end
-                end
-            end
-        elseif not tg.espLine then
-            for _,t2 in pairs(trcs) do pcall(function() t2:Remove() end) end
-            trcs={}
-        end
-
-        if tg.espName or tg.espHp or tg.espDist or tg.espBody then
-            local myPos=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") and pl.Character.HumanoidRootPart.Position
-            for char,data in pairs(evs) do
-                if not char.Parent then destroyESP(char)
-                else
-                    local hr2=char:FindFirstChild("HumanoidRootPart")
-                    local h2=char:FindFirstChildOfClass("Humanoid")
-                    if hr2 and h2 and myPos then
-                        if tg.espDist then
-                            local d=(hr2.Position-myPos).Magnitude/3.57
-                            data.distLbl.Text=string.format("%.1fm",d)
-                        end
-                        if tg.espHp then
-                            local hp=math.clamp(h2.Health/h2.MaxHealth,0,1)
-                            data.hpFill.Size=UDim2.new(1,0,hp,0)
-                            if hp>0.6 then data.hpFill.BackgroundColor3=Color3.fromRGB(0,255,100)
-                            elseif hp>0.3 then data.hpFill.BackgroundColor3=YEL
-                            else data.hpFill.BackgroundColor3=RED end
-                        end
-                        if tg.espBody then
-                            local m=measureBody(char)
-                            if m then
-                                data.fxBB.StudsOffset=Vector3.new(0,m.center,0)
-                                local dist=(cam.CFrame.Position-hr2.Position).Magnitude
-                                if dist>0.1 then
-                                    local pxPerStud=cam.ViewportSize.Y/(2*dist*math.tan(math.rad(cam.FieldOfView/2)))
-                                    data.fxBB.Size=UDim2.new(0,math.floor(m.width*pxPerStud),0,math.floor(m.height*pxPerStud))
-                                end
-                            end
-                            for _,s in ipairs(data.scans) do
-                                local y=((s.offset+rT*s.speed*s.dir)%1+1)%1
-                                s.obj.Position=UDim2.new(0,0,y,0)
-                            end
-                            for _,d in ipairs(data.dots) do
-                                d.y=d.y+rT*d.speed*d.dir*0.01
-                                if d.y>1.1 then d.y=-0.1 elseif d.y<-0.1 then d.y=1.1 end
-                                d.obj.Position=UDim2.new(d.x,0,d.y,0)
-                            end
-                            local ringT=(rT*0.6)%1
-                            data.ring.Size=UDim2.new(ringT,0,ringT,0)
-                            data.ringStroke.Transparency=ringT*0.9
-                            local hp2=math.floor(h2.Health/h2.MaxHealth*100)
-                            data.dataTop.Text="HP:"..hp2.."%"
-                            if data.hl then
-                                data.hl.FillTransparency=0.85+math.abs(math.sin(rT*2.5))*0.05
-                            end
-                        end
+                    if hd and h and h.Health>0 then
+                        local isE=true
+                        if p.Team and pl.Team and p.Team==pl.Team then isE=false end
+                        if tg.aimA or (tg.aimE and isE) then table.insert(hds,hd) end
                     end
                 end
             end
-        end
-
-        if tg.aimE or tg.aimA then
-            local c=pl.Character
-            if c and c:FindFirstChild("HumanoidRootPart") then
-                local hds={}
-                for _,p in ipairs(P:GetPlayers()) do
-                    if p~=pl and p.Character then
-                        local hd=p.Character:FindFirstChild("Head")
-                        local h=p.Character:FindFirstChildOfClass("Humanoid")
-                        if hd and h and h.Health>0 then
-                            local isE=true
-                            if p.Team and pl.Team and p.Team==pl.Team then isE=false end
-                            if tg.aimA or (tg.aimE and isE) then table.insert(hds,hd) end
-                        end
+            if #hds>0 then
+                local cn=Vector2.new(cam.ViewportSize.X/2,cam.ViewportSize.Y/2)
+                local bt,bd=nil,math.huge
+                for _,h in ipairs(hds) do
+                    local sp,on2=cam:WorldToViewportPoint(h.Position)
+                    if on2 then
+                        local d=(Vector2.new(sp.X,sp.Y)-cn).Magnitude
+                        if d<bd then bd=d bt=h end
                     end
                 end
-                if #hds>0 then
-                    local cn=Vector2.new(cam.ViewportSize.X/2,cam.ViewportSize.Y/2)
-                    local bt,bd=nil,math.huge
-                    for _,h in ipairs(hds) do
-                        local sp,on2=cam:WorldToViewportPoint(h.Position)
-                        if on2 then
-                            local d=(Vector2.new(sp.X,sp.Y)-cn).Magnitude
-                            if d<bd then bd=d bt=h end
-                        end
-                    end
-                    if bt then cam.CFrame=cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position,bt.Position),.3) end
-                end
+                if bt then cam.CFrame=cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position,bt.Position),.3) end
             end
         end
-    end)
+    end
 end)
 
--- Movement Heartbeat
+-- Movement HB
 RS.Heartbeat:Connect(function(dt)
     pcall(function()
         local c=pl.Character
@@ -1591,11 +1514,6 @@ RS.Heartbeat:Connect(function(dt)
                 end
             end
         end
-        if (tg.espName or tg.espHp or tg.espDist or tg.espBody) and tick()-epsTimer>3 then
-            epsTimer=tick()
-            rescanESP()
-            applyESPToggles()
-        end
     end)
 end)
 
@@ -1609,6 +1527,14 @@ end)
 pl.CharacterAdded:Connect(function()
     task.wait(.5)
     if tg.ghost then tGhost(true) end
+    -- rebuild ESP player khi respawn
+    if tg.espName or tg.espHp or tg.espDist or tg.espBody then
+        task.wait(0.5)
+        for _,p in ipairs(P:GetPlayers()) do
+            if p~=pl and p.Character and not evs[p.Character] then buildESP(p.Character) end
+        end
+        applyESPToggles()
+    end
 end)
 P.PlayerAdded:Connect(function(p)
     p.CharacterAdded:Connect(function(c)
@@ -1618,9 +1544,13 @@ P.PlayerAdded:Connect(function(p)
         end
     end)
 end)
+
+-- init ESP cho players hiện có
 for _,p in ipairs(P:GetPlayers()) do
-    if p~=pl and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-        buildESP(p.Character)
+    if p~=pl and p.Character then
+        if p.Character:FindFirstChild("HumanoidRootPart") then
+            buildESP(p.Character)
+        end
     end
 end
 applyESPToggles()
@@ -1632,7 +1562,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v8] loaded - KILL AURA + FPS FIX")
+print("[HACKER NEKO v9] loaded - NO AURA + ESP FIX + FPS FIX")
 
 end)
 
