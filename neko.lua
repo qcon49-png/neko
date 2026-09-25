@@ -557,9 +557,7 @@ local function setMapBright(on)
     end
 end
 
--- ==================================================================
 -- ============ [FIX 1] TELEPORT - CHỐNG ANTI-TELE ==================
--- ==================================================================
 local teleportBusy = false
 teleportTo = function(targetPos, opts)
     opts = opts or {}
@@ -620,83 +618,6 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- ==================================================================
--- ============ [FIX 4] GODMODE - KHÔNG CHẾT =======================
--- ==================================================================
-local godmodeOn = false
-local godHooked = false
-
-local function setupGodHook()
-    if godHooked then return end
-    if not (getrawmetatable and setreadonly and newcclosure and hookmetamethod) then return end
-    godHooked = true
-    pcall(function()
-        local mt = getrawmetatable(game)
-        local oldIndex = mt.__index
-        local oldNewIndex = mt.__newindex
-        local oldNamecall = mt.__namecall
-        setreadonly(mt, false)
-
-        mt.__index = newcclosure(function(self, key)
-            if godmodeOn and typeof(self) == "Instance" and self:IsA("Humanoid")
-               and self.Parent == pl.Character and key == "Health" then
-                return oldIndex(self, "MaxHealth") or 100
-            end
-            return oldIndex(self, key)
-        end)
-
-        mt.__newindex = newcclosure(function(self, key, value)
-            if godmodeOn and typeof(self) == "Instance" and self:IsA("Humanoid")
-               and self.Parent == pl.Character and key == "Health" then
-                return
-            end
-            return oldNewIndex(self, key, value)
-        end)
-
-        mt.__namecall = newcclosure(function(self, ...)
-            local method = getnamecallmethod()
-            if godmodeOn and self == pl.Character then
-                if method == "BreakJoints" or method == "TakeDamage" then
-                    return
-                end
-            end
-            return oldNamecall(self, ...)
-        end)
-
-        setreadonly(mt, true)
-    end)
-end
-
-local function setGodmode(on)
-    godmodeOn = on
-    if on then
-        setupGodHook()
-        local c = pl.Character
-        if c then
-            local h = c:FindFirstChildOfClass("Humanoid")
-            if h then
-                pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end)
-                h.Health = h.MaxHealth
-            end
-        end
-    else
-        local c = pl.Character
-        if c then
-            local h = c:FindFirstChildOfClass("Humanoid")
-            if h then pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Dead, true) end) end
-        end
-    end
-end
-
-RS.Heartbeat:Connect(function()
-    if not godmodeOn then return end
-    local c = pl.Character
-    local h = c and c:FindFirstChildOfClass("Humanoid")
-    if h and h.Health > 0 and h.Health < h.MaxHealth then
-        h.Health = h.MaxHealth
-    end
-end)
-
 -- ============ HITBOX (tự động chạy nền) ============
 local hitboxTick = 0
 RS.Heartbeat:Connect(function(dt)
@@ -729,7 +650,7 @@ RS.Heartbeat:Connect(function(dt)
     end
 end)
 
--- ============ [FIX BUG] FORWARD DECLARE setNoclip ============
+-- ============ FORWARD DECLARE setNoclip ============
 local setNoclip
 
 local function onCharSpawn(char)
@@ -933,9 +854,7 @@ local function getAimPriority(p)
     return 3
 end
 
--- ==================================================================
--- ============ [FIX 3] FIND AIM TARGET - ƯU TIÊN HEAD =============
--- ==================================================================
+-- ============ FIND AIM TARGET - ƯU TIÊN HEAD ============
 local function findAimTarget()
     local camPos = cam.CFrame.Position
     local camLook = cam.CFrame.LookVector
@@ -951,7 +870,6 @@ local function findAimTarget()
                     local dot = math.clamp(camLook.Unit:Dot(dir.Unit), -1, 1)
                     local angle = math.deg(math.acos(dot))
                     local priority = getAimPriority(p)
-                    -- Ưu tiên cực mạnh theo góc nhìn
                     local score = angle * 10 + priority * 200 + dist * 0.1
                     if score < bestScore then
                         bestScore = score
@@ -977,9 +895,7 @@ local function isFPSMode()
     return false
 end
 
--- ==================================================================
--- ============ [FIX 3] AIMLOCK SNAP + BÙ PING =====================
--- ==================================================================
+-- ============ AIMLOCK SNAP + BÙ PING ============
 pcall(function()
     RS:UnbindFromRenderStep("NekoAimlock")
 end)
@@ -1004,14 +920,12 @@ RS:BindToRenderStep("NekoAimlock", Enum.RenderPriority.Camera.Value + 1, functio
     local camPos = cam.CFrame.Position
     local aimPos = head.Position
 
-    -- Bù ping + frame delay cho HITSCAN
     if hr then
         local ping = pl:GetNetworkPing()
         local comp = ping * 1.5 + 0.03
         aimPos = aimPos + hr.AssemblyLinearVelocity * comp
     end
 
-    -- Snap thẳng, KHÔNG lerp
     cam.CFrame = CFrame.lookAt(camPos, aimPos)
 end)
 
@@ -1218,6 +1132,96 @@ task.spawn(function()
     end
 end)
 
+-- ==================================================================
+-- ============ FAST FIRE + NO RELOAD ===============================
+-- ==================================================================
+local extras = { fastFire = false, noReload = false }
+
+RS.Heartbeat:Connect(function()
+    if not (extras.fastFire or extras.noReload) then return end
+    local c = pl.Character
+    if not c then return end
+    local tool = c:FindFirstChildOfClass("Tool")
+    if not tool then return end
+
+    for _, v in ipairs(tool:GetDescendants()) do
+        if v:IsA("NumberValue") or v:IsA("IntValue") then
+            local n = string.lower(v.Name)
+            if extras.fastFire then
+                if n:find("cooldown") or n:find("firerate") or n:find("firedelay")
+                   or n:find("rate") or n:find("delay") or n:find("cd") then
+                    if not n:find("reload") then
+                        pcall(function() v.Value = 0 end)
+                    end
+                end
+            end
+            if extras.noReload then
+                if n:find("reload") or n:find("reloadtime") then
+                    pcall(function() v.Value = 0 end)
+                end
+                if n:find("ammo") or n:find("clip") or n:find("mag") then
+                    if not n:find("max") then
+                        pcall(function() v.Value = 9999 end)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+local lastFire = 0
+RS.Heartbeat:Connect(function()
+    if not extras.fastFire then return end
+    if tick() - lastFire < 0.028 then return end
+    lastFire = tick()
+    local c = pl.Character
+    if not c then return end
+    local tool = c:FindFirstChildOfClass("Tool")
+    if not tool then return end
+    pcall(function() tool:Activate() end)
+end)
+
+-- ==================================================================
+-- ============ ANTI-KICK + ANTI-BAN ================================
+-- ==================================================================
+local antiKickOn = false
+local antiBanOn  = false
+local SAFE_JOBID   = game.JobId
+local SAFE_PLACEID = game.PlaceId
+local lastRejoin   = 0
+
+local kickHooked = false
+local function setupKickHook()
+    if kickHooked then return end
+    if not (getrawmetatable and setreadonly and newcclosure and getnamecallmethod) then return end
+    local okHook = pcall(function()
+        local mt = getrawmetatable(game)
+        local oldNC = mt.__namecall
+        setreadonly(mt, false)
+        mt.__namecall = newcclosure(function(self, ...)
+            if antiKickOn and self == pl and getnamecallmethod() == "Kick" then
+                return
+            end
+            return oldNC(self, ...)
+        end)
+        setreadonly(mt, true)
+    end)
+    kickHooked = okHook
+end
+
+pl.AncestryChanged:Connect(function(_, parent)
+    if parent then return end
+    if not antiBanOn then return end
+    if tick() - lastRejoin < 10 then return end
+    if SAFE_JOBID == "" or SAFE_PLACEID == 0 then return end
+    lastRejoin = tick()
+    task.spawn(function()
+        pcall(function()
+            TS:TeleportToPlaceInstance(SAFE_PLACEID, SAFE_JOBID, pl)
+        end)
+    end)
+end)
+
 -- ============ POPULATE UI ============
 mkSec(pages["MOVE"],"// SPEED")
 mkSli(pages["MOVE"],"Walk Speed",16,500,16,function(v) stt.ws=v end)
@@ -1254,6 +1258,10 @@ mkTog(pages["COMBAT"],"AUTO ATTACK",false,function(on)
     if on then aaLastTp = 0 end
 end)
 
+mkSec(pages["COMBAT"],"// WEAPON BUFF")
+mkTog(pages["COMBAT"],"FAST FIRE",false,function(on) extras.fastFire = on end)
+mkTog(pages["COMBAT"],"NO RELOAD",false,function(on) extras.noReload = on end)
+
 mkSec(pages["COMBAT"],"// HITBOX (chạy nền)")
 mkTog(pages["COMBAT"],"HITBOX EXPAND",true,function(on) hitboxOn = on end)
 
@@ -1279,7 +1287,11 @@ mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on setFPS(on) end)
 mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on setMapBright(on) end)
 mkSec(pages["PLAYER"],"// SURVIVAL")
 mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclip(on) end)
-mkTog(pages["PLAYER"],"GODMODE",false,function(on) setGodmode(on) end)
+mkTog(pages["PLAYER"],"ANTI-KICK",false,function(on)
+    antiKickOn = on
+    if on then setupKickHook() end
+end)
+mkTog(pages["PLAYER"],"ANTI-BAN (auto rejoin)",false,function(on) antiBanOn = on end)
 mkSec(pages["PLAYER"],"// CAMERA")
 mkSli(pages["PLAYER"],"FOV",70,120,70,function(v) cam.FieldOfView=v end)
 mkSec(pages["PLAYER"],"// UTILITIES")
@@ -1558,7 +1570,10 @@ task.spawn(function()
                 if hitboxOn then table.insert(a,"HITBOX") end
                 if aim.enabled then table.insert(a,"AIM") end
                 if fovCircle.enabled then table.insert(a,"FOV") end
-                if godmodeOn then table.insert(a,"GOD") end
+                if extras.fastFire then table.insert(a,"FF") end
+                if extras.noReload then table.insert(a,"NR") end
+                if antiKickOn then table.insert(a,"AK") end
+                if antiBanOn then table.insert(a,"AB") end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
         end
@@ -1736,9 +1751,7 @@ RS.RenderStepped:Connect(function(dt)
     end
 end)
 
--- ==================================================================
--- ============ [FIX 2] SPEED - CHỐNG ANTI-SPEED ====================
--- ==================================================================
+-- ============ SPEED - CHỐNG ANTI-SPEED ============
 local speedBV = nil
 local function ensureSpeedBV(hr)
     if speedBV and speedBV.Parent then return speedBV end
@@ -1757,7 +1770,6 @@ RS.Heartbeat:Connect(function(dt)
     local hr = c:FindFirstChild("HumanoidRootPart")
     if not h or not hr or h.Health <= 0 then return end
 
-    -- Luôn giữ WalkSpeed = 16 để không bị flag
     if h.WalkSpeed ~= 16 then h.WalkSpeed = 16 end
 
     if stt.ws > 16 then
