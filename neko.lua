@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v12.7 (LITE + HITBOX MAX) ===============
+-- ============ HACKER NEKO v12.8 (HITBOX BACKGROUND) ==============
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -37,31 +37,32 @@ local epf=Instance.new("Folder",ef) epf.Name="Players"
 
 local stt={ws=16,jp=50}
 local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
-    noclip=false,mapBright=false,fps=false,infJump=false,hitbox=false}
+    noclip=false,mapBright=false,fps=false,infJump=false,hitbox=true}
 local aa={enabled=false,speed=200,atkSpd=false,hoverOn=false,hoverDist=0,target=nil}
-local HITBOX_MULT = 30  -- [FIX] Mức to nhất
+local HITBOX_MULT = 40   -- [FIX] to hơn
+local HITBOX_MIN  = 35   -- [FIX] min mỗi chiều
 
 local teleportTo
 
 local hfa=(writefile~=nil) and (readfile~=nil) and (isfile~=nil)
 local WPF="NekoWPs_"..tostring(game.PlaceId)..".json"
-local wps = {nil, nil, nil, nil, nil, nil, nil, nil}
+local wps = {nil,nil,nil,nil,nil,nil,nil,nil}
 local wpHeight = 3
 
 if hfa and isfile(WPF) then
     pcall(function()
-        local d = HS:JSONDecode(readfile(WPF))
+        local d=HS:JSONDecode(readfile(WPF))
         if d then
-            if type(d.height) == "number" then wpHeight = d.height end
-            if type(d.wps) == "table" then
-                for i=1,8 do if type(d.wps[i]) == "table" then wps[i] = d.wps[i] end end
+            if type(d.height)=="number" then wpHeight=d.height end
+            if type(d.wps)=="table" then
+                for i=1,8 do if type(d.wps[i])=="table" then wps[i]=d.wps[i] end end
             end
         end
     end)
 end
 local function saveWPs()
     if not hfa then return end
-    pcall(function() writefile(WPF, HS:JSONEncode({height=wpHeight, wps=wps})) end)
+    pcall(function() writefile(WPF,HS:JSONEncode({height=wpHeight,wps=wps})) end)
 end
 local function cfFromArr(arr)
     if not arr then return nil end
@@ -340,52 +341,29 @@ local function mkBtn(parent,name,cb)
     return b
 end
 
-local BASE_LIGHTING = {
-    Brightness = L.Brightness, ClockTime = L.ClockTime,
-    Ambient = L.Ambient, OutdoorAmbient = L.OutdoorAmbient,
-    GlobalShadows = L.GlobalShadows,
-    EnvironmentDiffuseScale = L.EnvironmentDiffuseScale,
-    EnvironmentSpecularScale = L.EnvironmentSpecularScale,
-    ShadowSoftness = L.ShadowSoftness,
-    FogEnd = L.FogEnd, FogStart = L.FogStart,
-    ExposureCompensation = L.ExposureCompensation,
-}
-local function restoreLightingBase()
-    pcall(function() for k, v in pairs(BASE_LIGHTING) do L[k] = v end end)
-end
+local BASE_LIGHTING={Brightness=L.Brightness,ClockTime=L.ClockTime,Ambient=L.Ambient,OutdoorAmbient=L.OutdoorAmbient,
+    GlobalShadows=L.GlobalShadows,EnvironmentDiffuseScale=L.EnvironmentDiffuseScale,EnvironmentSpecularScale=L.EnvironmentSpecularScale,
+    ShadowSoftness=L.ShadowSoftness,FogEnd=L.FogEnd,FogStart=L.FogStart,ExposureCompensation=L.ExposureCompensation}
+local function restoreLightingBase() pcall(function() for k,v in pairs(BASE_LIGHTING) do L[k]=v end end) end
 local function reapplyLighting()
     restoreLightingBase()
-    if tg.fps then
-        pcall(function()
-            L.GlobalShadows=false L.EnvironmentDiffuseScale=0 L.EnvironmentSpecularScale=0
-            L.ShadowSoftness=0 L.FogEnd=100000 L.FogStart=100000
-        end)
-    end
-    if tg.mapBright then
-        pcall(function()
-            L.Brightness=3 L.ClockTime=14
-            L.Ambient=Color3.fromRGB(180,180,180) L.OutdoorAmbient=Color3.fromRGB(180,180,180)
-            L.FogEnd=100000 L.FogStart=100000 L.GlobalShadows=false L.ExposureCompensation=0.5
-        end)
-    end
+    if tg.fps then pcall(function() L.GlobalShadows=false L.EnvironmentDiffuseScale=0 L.EnvironmentSpecularScale=0 L.ShadowSoftness=0 L.FogEnd=100000 L.FogStart=100000 end) end
+    if tg.mapBright then pcall(function() L.Brightness=3 L.ClockTime=14 L.Ambient=Color3.fromRGB(180,180,180) L.OutdoorAmbient=Color3.fromRGB(180,180,180) L.FogEnd=100000 L.FogStart=100000 L.GlobalShadows=false L.ExposureCompensation=0.5 end) end
 end
 
 local fpsSaved={active=false,gen=0,parts={},effects={},postFx={},atmos={},terrain={},conns={},qualityLevel=nil}
 local fpsQueue={} local fpsQueueRunning=false
-
 local function fpsKill(o)
     if not fpsSaved.active then return end
     pcall(function()
         if o:IsA("BasePart") or o:IsA("MeshPart") or o:IsA("UnionOperation") then
             if o.CastShadow then if not fpsSaved.parts[o] then fpsSaved.parts[o]=true end o.CastShadow=false end
-        elseif o:IsA("ParticleEmitter") or o:IsA("Trail") or o:IsA("Beam")
-            or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles")
+        elseif o:IsA("ParticleEmitter") or o:IsA("Trail") or o:IsA("Beam") or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles")
             or o:IsA("PointLight") or o:IsA("SpotLight") or o:IsA("SurfaceLight") then
             if o.Enabled then if not fpsSaved.effects[o] then fpsSaved.effects[o]=true end o.Enabled=false end
         end
     end)
 end
-
 local function processFPSQueue()
     if fpsQueueRunning then return end
     fpsQueueRunning=true
@@ -399,18 +377,12 @@ local function processFPSQueue()
         fpsQueueRunning=false
     end)
 end
-
 local function enableFPS()
     if fpsSaved.active then return end
     fpsSaved.active=true fpsSaved.gen=fpsSaved.gen+1
     local myGen=fpsSaved.gen
     fpsSaved.parts={} fpsSaved.effects={} fpsSaved.postFx={} fpsSaved.atmos={} fpsSaved.conns={}
-    pcall(function()
-        if settings and settings().Rendering then
-            fpsSaved.qualityLevel=settings().Rendering.QualityLevel
-            settings().Rendering.QualityLevel=Enum.QualityLevel.Level01
-        end
-    end)
+    pcall(function() if settings and settings().Rendering then fpsSaved.qualityLevel=settings().Rendering.QualityLevel settings().Rendering.QualityLevel=Enum.QualityLevel.Level01 end end)
     pcall(function() if setfpscap then setfpscap(999) end end)
     reapplyLighting()
     for _,v in ipairs(L:GetChildren()) do
@@ -421,8 +393,7 @@ local function enableFPS()
     end
     pcall(function()
         local t=workspace:FindFirstChildOfClass("Terrain")
-        if t then
-            fpsSaved.terrain={WaterWaveSize=t.WaterWaveSize,WaterReflectance=t.WaterReflectance,WaterTransparency=t.WaterTransparency}
+        if t then fpsSaved.terrain={WaterWaveSize=t.WaterWaveSize,WaterReflectance=t.WaterReflectance,WaterTransparency=t.WaterTransparency}
             t.WaterWaveSize=0 t.WaterReflectance=0 t.WaterTransparency=1
             pcall(function() t.Decoration=false end)
         end
@@ -435,20 +406,14 @@ local function enableFPS()
             if i%200==0 then task.wait() end
         end
     end)
-    table.insert(fpsSaved.conns,workspace.DescendantAdded:Connect(function(o)
-        if not fpsSaved.active then return end
-        table.insert(fpsQueue,o) processFPSQueue()
-    end))
+    table.insert(fpsSaved.conns,workspace.DescendantAdded:Connect(function(o) if not fpsSaved.active then return end table.insert(fpsQueue,o) processFPSQueue() end))
     table.insert(fpsSaved.conns,L.DescendantAdded:Connect(function(o)
         if not fpsSaved.active then return end
-        if o:IsA("PostEffect") then
-            pcall(function() if o.Enabled then fpsSaved.postFx[o]=true o.Enabled=false end end)
-        elseif o:IsA("Atmosphere") then
-            pcall(function() if fpsSaved.atmos[o]==nil then fpsSaved.atmos[o]=o.Density end o.Density=0 end)
+        if o:IsA("PostEffect") then pcall(function() if o.Enabled then fpsSaved.postFx[o]=true o.Enabled=false end end)
+        elseif o:IsA("Atmosphere") then pcall(function() if fpsSaved.atmos[o]==nil then fpsSaved.atmos[o]=o.Density end o.Density=0 end)
         else fpsKill(o) end
     end))
 end
-
 local function disableFPS()
     if not fpsSaved.active then return end
     fpsSaved.active=false fpsSaved.gen=fpsSaved.gen+1
@@ -456,10 +421,7 @@ local function disableFPS()
     fpsSaved.conns={}
     reapplyLighting()
     pcall(function() if settings and settings().Rendering and fpsSaved.qualityLevel then settings().Rendering.QualityLevel=fpsSaved.qualityLevel end end)
-    pcall(function()
-        local t=workspace:FindFirstChildOfClass("Terrain")
-        if t then for k,v in pairs(fpsSaved.terrain) do t[k]=v end pcall(function() t.Decoration=true end) end
-    end)
+    pcall(function() local t=workspace:FindFirstChildOfClass("Terrain") if t then for k,v in pairs(fpsSaved.terrain) do t[k]=v end pcall(function() t.Decoration=true end) end end)
     fpsSaved.terrain={}
     for fx in pairs(fpsSaved.postFx) do pcall(function() if fx and fx.Parent then fx.Enabled=true end end) end
     fpsSaved.postFx={}
@@ -471,14 +433,12 @@ local function disableFPS()
     fpsSaved.parts={}
     pcall(function() if setfpscap then setfpscap(240) end end)
 end
-
 local function setFPS(on) if on then enableFPS() else disableFPS() end end
 
 local mbPostFx={} local mbAtmos={}
 local function setMapBright(on)
     if on then
-        tg.mapBright=true reapplyLighting()
-        mbPostFx={} mbAtmos={}
+        tg.mapBright=true reapplyLighting() mbPostFx={} mbAtmos={}
         for _,v in ipairs(L:GetChildren()) do
             pcall(function()
                 if v:IsA("PostEffect") and v.Enabled then mbPostFx[v]=true v.Enabled=false
@@ -493,7 +453,7 @@ local function setMapBright(on)
     end
 end
 
--- ============ TELEPORT ============
+-- TELEPORT
 local teleportBusy=false
 teleportTo=function(targetPos,opts)
     opts=opts or {}
@@ -507,55 +467,35 @@ teleportTo=function(targetPos,opts)
         local steps=math.clamp(math.ceil(dist/40),1,15)
         for i=1,steps do
             if not hr or not hr.Parent then teleportBusy=false return end
-            local alpha=i/steps
-            hr.CFrame=CFrame.new(startPos:Lerp(targetPos,alpha))
+            hr.CFrame=CFrame.new(startPos:Lerp(targetPos,i/steps))
             hr.AssemblyLinearVelocity=Vector3.zero
             hr.AssemblyAngularVelocity=Vector3.zero
             task.wait(0.035)
         end
-        if hr and hr.Parent then
-            hr.CFrame=CFrame.new(targetPos)
-            hr.AssemblyLinearVelocity=Vector3.zero
-        end
+        if hr and hr.Parent then hr.CFrame=CFrame.new(targetPos) hr.AssemblyLinearVelocity=Vector3.zero end
         teleportBusy=false
     end)
     return true
 end
 
 -- ==================================================================
--- ============ [FIX] HITBOX EXPANDER - MAX SIZE ====================
+-- ============ [FIX] HITBOX BACKGROUND - expand ALL ================
 -- ==================================================================
--- Lưu size gốc để restore
-local hitboxSaved = {}   -- [part] = {size=Vector3, transparency=number}
+local hitboxSaved = {}
 
 local function expandCharHitbox(char)
     if not char then return end
     for _, part in ipairs(char:GetDescendants()) do
         if part:IsA("BasePart") and not part:GetAttribute("NekoHitboxExpanded") then
-            hitboxSaved[part] = {size = part.Size, transparency = part.Transparency}
+            hitboxSaved[part] = {size=part.Size}
             part:SetAttribute("NekoHitboxExpanded", true)
-            -- [FIX] Nhân size lên mức MAX, tối thiểu 30 studs
-            local newSize = part.Size * HITBOX_MULT
-            if newSize.X < 30 then newSize = Vector3.new(30, newSize.Y, newSize.Z) end
-            if newSize.Y < 30 then newSize = Vector3.new(newSize.X, 30, newSize.Z) end
-            if newSize.Z < 30 then newSize = Vector3.new(newSize.X, newSize.Y, 30) end
-            pcall(function() part.Size = newSize end)
+            local ns = part.Size * HITBOX_MULT
+            if ns.X < HITBOX_MIN then ns = Vector3.new(HITBOX_MIN, ns.Y, ns.Z) end
+            if ns.Y < HITBOX_MIN then ns = Vector3.new(ns.X, HITBOX_MIN, ns.Z) end
+            if ns.Z < HITBOX_MIN then ns = Vector3.new(ns.X, ns.Y, HITBOX_MIN) end
+            pcall(function() part.Size = ns end)
             pcall(function() part.CanCollide = false end)
-            -- Giữ transparency gốc (không làm trong suốt để tránh anti-cheat detect)
-        end
-    end
-end
-
-local function restoreCharHitbox(char)
-    if not char then return end
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") and part:GetAttribute("NekoHitboxExpanded") then
-            local saved = hitboxSaved[part]
-            if saved then
-                pcall(function() part.Size = saved.size end)
-                part:SetAttribute("NekoHitboxExpanded", nil)
-                hitboxSaved[part] = nil
-            end
+            pcall(function() part.Massless = true end)
         end
     end
 end
@@ -570,18 +510,64 @@ local function restoreAllHitboxes()
     hitboxSaved = {}
 end
 
--- [FIX] Heartbeat duy trì hitbox của mục tiêu Auto Attack
+-- [FIX] Hitbox chạy ngầm 24/7, expand TẤT CẢ player (trừ mình)
 task.spawn(function()
     while true do
-        task.wait(0.1)
-        if tg.hitbox and aa.target and aa.target.Character then
-            expandCharHitbox(aa.target.Character)
+        task.wait(0.15)
+        if tg.hitbox then
+            for _, p in ipairs(P:GetPlayers()) do
+                if p ~= pl and p.Character then
+                    expandCharHitbox(p.Character)
+                end
+            end
         end
     end
 end)
 
--- ============ FORWARD DECLARE setNoclip ============
+-- Tự expand khi player mới spawn
+P.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function(c)
+        task.wait(1)
+        if tg.hitbox then expandCharHitbox(c) end
+    end)
+end)
+
+-- ============ NOCLIP ============
 local setNoclip
+local noclipSaved={} local noclipConn=nil
+local function noclipApply(part)
+    if not part:IsA("BasePart") then return end
+    if noclipSaved[part]==nil then noclipSaved[part]=part.CanCollide end
+    part.CanCollide=false
+end
+setNoclip=function(on)
+    if noclipConn then noclipConn:Disconnect() noclipConn=nil end
+    local c=pl.Character
+    if on then
+        for part,orig in pairs(noclipSaved) do pcall(function() if part and part.Parent then part.CanCollide=orig end end) end
+        noclipSaved={}
+        if c then
+            for _,p in ipairs(c:GetDescendants()) do noclipApply(p) end
+            noclipConn=c.DescendantAdded:Connect(noclipApply)
+        end
+    else
+        for part,orig in pairs(noclipSaved) do pcall(function() if part and part.Parent then part.CanCollide=orig end end) end
+        noclipSaved={}
+    end
+end
+task.spawn(function()
+    while true do
+        task.wait(0.05)
+        if tg.noclip then
+            local c=pl.Character
+            if c then
+                for _,p in ipairs(c:GetDescendants()) do
+                    if p:IsA("BasePart") and p.CanCollide then p.CanCollide=false end
+                end
+            end
+        end
+    end
+end)
 
 local function onCharSpawn(char)
     local hr=char:WaitForChild("HumanoidRootPart",10)
@@ -595,41 +581,96 @@ pl.CharacterAdded:Connect(onCharSpawn)
 if pl.Character then task.spawn(function() pl.Character:WaitForChild("HumanoidRootPart",5) end) end
 
 -- ==================================================================
--- ============ [FIX] AUTO ATTACK - AIM + HITBOX ====================
+-- ============ [FIX] AUTO ATTACK - HAND TOUCH MECHANISM ============
 -- ==================================================================
+-- Cơ chế: teleport sát địch → activate tool → firetouchinterest từ
+-- Handle tool + tay mình đến MỌI part của địch (giống Steal a Brainrot)
+-- KHÔNG lock camera
+
+local function isTouchablePlayer(p)
+    if p == pl then return false end
+    if not p.Character then return false end
+    local h = p.Character:FindFirstChildOfClass("Humanoid")
+    if not h or h.Health <= 0 then return false end
+    return true
+end
+
+-- Lấy tất cả part có thể touch của mình (tool handle + tay)
+local function getMyTouchParts()
+    local parts = {}
+    local c = pl.Character
+    if not c then return parts end
+    -- Tool Handle
+    local tool = c:FindFirstChildOfClass("Tool")
+    if tool then
+        local handle = tool:FindFirstChild("Handle")
+        if handle and handle:IsA("BasePart") then
+            table.insert(parts, handle)
+        end
+        -- Bất kỳ BasePart nào trong tool
+        for _, v in ipairs(tool:GetChildren()) do
+            if v:IsA("BasePart") and v ~= handle then
+                table.insert(parts, v)
+            end
+        end
+    end
+    -- Tay mình
+    local rArm = c:FindFirstChild("RightHand") or c:FindFirstChild("Right Arm") or c:FindFirstChild("RightLowerArm")
+    local lArm = c:FindFirstChild("LeftHand") or c:FindFirstChild("Left Arm") or c:FindFirstChild("LeftLowerArm")
+    if rArm then table.insert(parts, rArm) end
+    if lArm then table.insert(parts, lArm) end
+    -- HRP để backup
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if hrp then table.insert(parts, hrp) end
+    return parts
+end
+
+local function getTargetParts(target)
+    local parts = {}
+    if not target or not target.Character then return parts end
+    for _, part in ipairs(target.Character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            table.insert(parts, part)
+        end
+    end
+    return parts
+end
+
+-- [FIX] Bắn không lock cam
 local function fireAttack()
     local c = pl.Character
     if not c then return end
     local tool = c:FindFirstChildOfClass("Tool")
     if not tool then return end
+    if not aa.target or not aa.target.Character then return end
 
-    -- [FIX] Aim camera vào Head mục tiêu trước khi bắn
-    if aa.target and aa.target.Character then
-        local tc = aa.target.Character
-        local tHead = tc:FindFirstChild("Head")
-        local tHrp = tc:FindFirstChild("HumanoidRootPart")
-        if tHead and tHead.Parent then
-            local camPos = cam.CFrame.Position
-            pcall(function() cam.CFrame = CFrame.lookAt(camPos, tHead.Position) end)
-        end
-        -- [FIX] firetouchinterest để trigger Touched event (nếu game dùng)
-        local cHrp = c:FindFirstChild("HumanoidRootPart")
-        if cHrp and tHrp then
-            pcall(function()
-                firetouchinterest(cHrp, tHrp, 0)
-                firetouchinterest(cHrp, tHrp, 1)
-            end)
-        end
-        if cHrp and tHead then
-            pcall(function()
-                firetouchinterest(cHrp, tHead, 0)
-                firetouchinterest(cHrp, tHead, 1)
-            end)
-        end
+    -- 1) Teleport sát địch (ngay chỗ địch)
+    local hr = c:FindFirstChild("HumanoidRootPart")
+    local tHrp = aa.target.Character:FindFirstChild("HumanoidRootPart")
+    if hr and tHrp then
+        hr.CFrame = CFrame.new(tHrp.Position + Vector3.new(0, aa.hoverDist, 0))
+        hr.AssemblyLinearVelocity = Vector3.zero
+        hr.AssemblyAngularVelocity = Vector3.zero
     end
 
-    -- [FIX] Activate tool với mouse đã aim vào mục tiêu
+    -- 2) Activate tool (trigger tool logic)
     pcall(function() tool:Activate() end)
+
+    -- 3) Fire touch: từ TẤT CẢ part của mình đến TẤT CẢ part của địch
+    local myParts = getMyTouchParts()
+    local tParts = getTargetParts(aa.target)
+    for _, mp in ipairs(myParts) do
+        if mp and mp.Parent then
+            for _, tp in ipairs(tParts) do
+                if tp and tp.Parent then
+                    pcall(function()
+                        firetouchinterest(mp, tp, 0)
+                        firetouchinterest(mp, tp, 1)
+                    end)
+                end
+            end
+        end
+    end
 end
 
 local function aaApplySpeed()
@@ -669,6 +710,7 @@ end
 local aaAccum=0
 RS.Heartbeat:Connect(function(dt)
     if not aa.enabled or not aa.target or not aa.target.Parent then aaAccum=0 return end
+    if not isTouchablePlayer(aa.target) then return end
     local spd=aa.speed if spd<1 then spd=1 end
     aaAccum=aaAccum+spd*dt
     local count=math.floor(aaAccum)
@@ -677,25 +719,6 @@ RS.Heartbeat:Connect(function(dt)
     for i=1,count do fireAttack() end
     aaDisableAnims()
     if aa.atkSpd then aaApplySpeed() end
-end)
-
--- Teleport tới mục tiêu
-local aaLastTp=0
-RS.Heartbeat:Connect(function()
-    if not aa.enabled or not aa.target or not aa.target.Parent then return end
-    local tc=aa.target.Character if not tc then return end
-    local thr=tc:FindFirstChild("HumanoidRootPart") if not thr then return end
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart") if not hr then return end
-    local now=tick()
-    if now-aaLastTp<0.15 then return end
-    local targetPos=thr.Position+Vector3.new(0,aa.hoverDist,0)
-    if (hr.Position-targetPos).Magnitude>2 then
-        hr.CFrame=CFrame.new(targetPos)
-        hr.AssemblyLinearVelocity=Vector3.zero
-        hr.AssemblyAngularVelocity=Vector3.zero
-        aaLastTp=now
-    end
 end)
 
 -- ============ ESP PLAYER ============
@@ -782,10 +805,8 @@ local function buildESP(char)
     dataTop.TextColor3=G dataTop.TextStrokeTransparency=.4 dataTop.TextStrokeColor3=Color3.new(0,0,0)
     dataTop.Font=Enum.Font.Code dataTop.TextSize=8 dataTop.TextXAlignment=Enum.TextXAlignment.Center
     evs[char]={folder=fold,hl=hl,infoBB=infoBB,nameLbl=nameLbl,distLbl=distLbl,hpBB=hpBB,hpFill=hpFill,
-               fxBB=fxBB,scans=scans,dots=dots,ring=ring,ringStroke=ringStroke,dataTop=dataTop,
-               _mCache=nil,_mFrame=0}
+               fxBB=fxBB,scans=scans,dots=dots,ring=ring,ringStroke=ringStroke,dataTop=dataTop,_mCache=nil,_mFrame=0}
 end
-
 local function destroyESP(char)
     if evs[char] then pcall(function() evs[char].folder:Destroy() end) evs[char]=nil end
 end
@@ -801,7 +822,6 @@ local function applyESPToggles()
         else destroyESP(char) end
     end
 end
-
 task.spawn(function()
     while true do
         task.wait(2)
@@ -813,42 +833,6 @@ task.spawn(function()
                     if p~=pl and p.Character and not evs[p.Character] then
                         if p.Character:FindFirstChild("HumanoidRootPart") then buildESP(p.Character) end
                     end
-                end
-            end
-        end
-    end
-end)
-
-local noclipSaved={} local noclipConn=nil
-local function noclipApply(part)
-    if not part:IsA("BasePart") then return end
-    if noclipSaved[part]==nil then noclipSaved[part]=part.CanCollide end
-    part.CanCollide=false
-end
-setNoclip=function(on)
-    if noclipConn then noclipConn:Disconnect() noclipConn=nil end
-    local c=pl.Character
-    if on then
-        for part,orig in pairs(noclipSaved) do pcall(function() if part and part.Parent then part.CanCollide=orig end end) end
-        noclipSaved={}
-        if c then
-            for _,p in ipairs(c:GetDescendants()) do noclipApply(p) end
-            noclipConn=c.DescendantAdded:Connect(noclipApply)
-        end
-    else
-        for part,orig in pairs(noclipSaved) do pcall(function() if part and part.Parent then part.CanCollide=orig end end) end
-        noclipSaved={}
-    end
-end
-
-task.spawn(function()
-    while true do
-        task.wait(0.05)
-        if tg.noclip then
-            local c=pl.Character
-            if c then
-                for _,p in ipairs(c:GetDescendants()) do
-                    if p:IsA("BasePart") and p.CanCollide then p.CanCollide=false end
                 end
             end
         end
@@ -869,7 +853,7 @@ mkTog(pages["ESP"],"ESP HEALTH",false,function(on) tg.espHp=on applyESPToggles()
 mkTog(pages["ESP"],"ESP DISTANCE",false,function(on) tg.espDist=on applyESPToggles() end)
 mkTog(pages["ESP"],"ESP BODY FX",false,function(on) tg.espBody=on applyESPToggles() end)
 
-mkSec(pages["COMBAT"],"// AUTO ATTACK")
+mkSec(pages["COMBAT"],"// AUTO ATTACK (hand touch)")
 local aaTargetBtn=mkBtn(pages["COMBAT"],"TARGET: (none)",function() end)
 local function openTargetPicker()
     dlgTitle.Text="> SELECT TARGET PLAYER"
@@ -889,22 +873,20 @@ mkTog(pages["COMBAT"],"AUTO ATTACK [FIX]",false,function(on)
     if on and not aa.target then aaTargetBtn.Text="  > TARGET: chon truoc!" return end
     aa.enabled=on aa.atkSpd=on aa.hoverOn=on
     if on then
-        aaLastTp=0
-        stLbl.Text="[ OK ] Auto Attack ON + Hitbox MAX"
+        stLbl.Text="[ OK ] Auto Attack ON (hand touch)"
         stLbl.TextColor3=G
     else
-        restoreAllHitboxes()
         stLbl.Text="[ OK ] Auto Attack OFF"
         stLbl.TextColor3=DIM
     end
 end)
 
-mkSec(pages["COMBAT"],"// HITBOX")
+mkSec(pages["COMBAT"],"// HITBOX (BACKGROUND)")
 mkTog(pages["COMBAT"],"HITBOX EXPAND MAX",true,function(on)
     tg.hitbox=on
     if not on then restoreAllHitboxes() end
     if on then
-        stLbl.Text="[ OK ] Hitbox x"..HITBOX_MULT
+        stLbl.Text="[ OK ] Hitbox x"..HITBOX_MULT.." (background)"
         stLbl.TextColor3=G
     end
 end)
@@ -916,15 +898,10 @@ mkSec(pages["PLAYER"],"// SURVIVAL")
 mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclip(on) end)
 mkSec(pages["PLAYER"],"// CAMERA")
 mkSli(pages["PLAYER"],"FOV",70,120,70,function(v) cam.FieldOfView=v end)
-
--- [FIX] UTILITIES: RESET CHARACTER về đúng vị trí gốc (cạnh REJOIN SERVER)
 mkSec(pages["PLAYER"],"// UTILITIES")
 mkBtn(pages["PLAYER"],"RESET CHARACTER",function()
     local c=pl.Character
-    if c then
-        local h=c:FindFirstChildOfClass("Humanoid")
-        if h then h.Health=0 end
-    end
+    if c then local h=c:FindFirstChildOfClass("Humanoid") if h then h.Health=0 end end
 end)
 mkBtn(pages["PLAYER"],"REJOIN SERVER",function()
     pcall(function() TS:TeleportToPlaceInstance(game.PlaceId,game.JobId,pl) end)
@@ -984,10 +961,7 @@ local function buildWPRow(index)
         b.BackgroundColor3=BG2 b.BorderSizePixel=0 b.Text=text b.Font=Enum.Font.Code
         b.TextSize=8 b.TextColor3=color b.AutoButtonColor=false b.ZIndex=113
         Instance.new("UICorner",b).CornerRadius=UDim.new(0,2)
-        b.MouseButton1Click:Connect(function()
-            b.Text="..." task.wait(0.1) b.Text=text
-            if cb then pcall(cb) end
-        end)
+        b.MouseButton1Click:Connect(function() b.Text="..." task.wait(0.1) b.Text=text if cb then pcall(cb) end end)
         return b
     end
     mkMiniBtn(-102,"SET",G,function()
@@ -1006,9 +980,7 @@ local function buildWPRow(index)
             stLbl.Text="[ ! ] Slot "..index.." trống" stLbl.TextColor3=YEL
         end
     end)
-    mkMiniBtn(-34,"✕",RED,function()
-        wps[index]=nil saveWPs() info.Text="EMPTY" info.TextColor3=DIM
-    end)
+    mkMiniBtn(-34,"✕",RED,function() wps[index]=nil saveWPs() info.Text="EMPTY" info.TextColor3=DIM end)
     if wps[index] then info.Text="READY" info.TextColor3=G end
     wpRows[index]={row=row,info=info}
 end
@@ -1121,16 +1093,13 @@ task.spawn(function()
                     local h=c:FindFirstChildOfClass("Humanoid")
                     local hr=c:FindFirstChild("HumanoidRootPart")
                     if h then infoRefs.hp.Text=math.floor(h.Health).." / "..math.floor(h.MaxHealth) end
-                    if hr then
-                        local p=hr.Position
-                        infoRefs.pos.Text=string.format("%d,%d,%d",math.floor(p.X),math.floor(p.Y),math.floor(p.Z))
-                    end
+                    if hr then local p=hr.Position infoRefs.pos.Text=string.format("%d,%d,%d",math.floor(p.X),math.floor(p.Y),math.floor(p.Z)) end
                 end
                 infoRefs.game.Text=string.sub(game.Name or "?",1,24)
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v12.7-HITBOX"
+                infoRefs.ver.Text="v12.8-HANDTOUCH"
                 local a={}
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
@@ -1171,9 +1140,7 @@ local function showMenu()
     menuOpen=true
     main.Visible=true
     main.Size=UDim2.new(0,0,0,0) main.BackgroundTransparency=1
-    T:Create(main,TweenInfo.new(0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
-        Size=UDim2.new(0,420,0,340),BackgroundTransparency=0.05
-    }):Play()
+    T:Create(main,TweenInfo.new(0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,420,0,340),BackgroundTransparency=0.05}):Play()
     stk.Transparency=1
     T:Create(stk,TweenInfo.new(0.25),{Transparency=0}):Play()
     bootSequence()
@@ -1181,9 +1148,7 @@ end
 local function hideMenu()
     if not menuOpen then return end
     menuOpen=false
-    local tw=T:Create(main,TweenInfo.new(0.18,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{
-        Size=UDim2.new(0,0,0,0),BackgroundTransparency=1
-    })
+    local tw=T:Create(main,TweenInfo.new(0.18,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Size=UDim2.new(0,0,0,0),BackgroundTransparency=1})
     tw:Play()
     tw.Completed:Connect(function() main.Visible=false end)
 end
@@ -1249,8 +1214,7 @@ RS.RenderStepped:Connect(function(dt)
                     end
                     if tr then
                         local v,on2=cam:WorldToViewportPoint(hr.Position)
-                        if on2 then tr.From=ct2 tr.To=Vector2.new(v.X,v.Y) tr.Color=rb tr.Visible=true
-                        else tr.Visible=false end
+                        if on2 then tr.From=ct2 tr.To=Vector2.new(v.X,v.Y) tr.Color=rb tr.Visible=true else tr.Visible=false end
                     end
                 elseif trcs[p] then trcs[p].Visible=false end
             end
@@ -1283,9 +1247,7 @@ RS.RenderStepped:Connect(function(dt)
                     end
                     if tg.espBody then
                         data._mFrame=data._mFrame+1
-                        if data._mFrame>=20 or not data._mCache then
-                            data._mCache=measureBody(char) data._mFrame=0
-                        end
+                        if data._mFrame>=20 or not data._mCache then data._mCache=measureBody(char) data._mFrame=0 end
                         local m=data._mCache
                         if m then
                             data.fxBB.StudsOffset=Vector3.new(0,m.center,0)
@@ -1317,7 +1279,7 @@ RS.RenderStepped:Connect(function(dt)
     end
 end)
 
--- ============ SPEED ============
+-- SPEED
 local speedBV=nil
 local function ensureSpeedBV(hr)
     if speedBV and speedBV.Parent==hr then return speedBV end
@@ -1329,7 +1291,6 @@ local function ensureSpeedBV(hr)
     speedBV.Parent=hr
     return speedBV
 end
-
 RS.Heartbeat:Connect(function(dt)
     local c=pl.Character if not c then return end
     local h=c:FindFirstChildOfClass("Humanoid")
@@ -1339,8 +1300,7 @@ RS.Heartbeat:Connect(function(dt)
     if stt.ws>16 then
         local bv=ensureSpeedBV(hr)
         local md=h.MoveDirection
-        if md.Magnitude>0.1 then bv.Velocity=md.Unit*stt.ws
-        else bv.Velocity=Vector3.zero end
+        if md.Magnitude>0.1 then bv.Velocity=md.Unit*stt.ws else bv.Velocity=Vector3.zero end
     else
         if speedBV and speedBV.Parent then speedBV.Velocity=Vector3.zero end
     end
@@ -1355,12 +1315,6 @@ UIS.JumpRequest:Connect(function()
     end
 end)
 
-P.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function(c)
-        task.wait(1)
-        if tg.espName or tg.espHp or tg.espDist or tg.espBody then buildESP(c) applyESPToggles() end
-    end)
-end)
 for _,p in ipairs(P:GetPlayers()) do
     if p~=pl and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then buildESP(p.Character) end
 end
@@ -1377,7 +1331,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v12.7] loaded - Reset restored + Hitbox MAX + AA fix")
+print("[HACKER NEKO v12.8] loaded - Background hitbox + hand touch auto attack")
 
 end)
 
