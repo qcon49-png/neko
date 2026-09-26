@@ -600,7 +600,7 @@ if pl.Character then
     end)
 end
 
--- ============ AUTO ATTACK: fire attack đơn giản ============
+-- ============ AUTO ATTACK ============
 local function fireAttack()
     local c=pl.Character
     if not c then return end
@@ -667,7 +667,6 @@ RS.Heartbeat:Connect(function()
 
     local targetPos = thr.Position + Vector3.new(0, aa.hoverDist, 0)
     if (hr.Position - targetPos).Magnitude > 2 then
-        pcall(function() hr:SetNetworkOwner(pl) end)
         hr.CFrame = CFrame.new(targetPos)
         hr.AssemblyLinearVelocity = Vector3.zero
         hr.AssemblyAngularVelocity = Vector3.zero
@@ -891,6 +890,9 @@ mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on setFPS(on) end)
 mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on setMapBright(on) end)
 mkSec(pages["PLAYER"],"// SURVIVAL")
 mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclip(on) end)
+mkBtn(pages["PLAYER"],"RESET CHARACTER",function()
+    local c=pl.Character if c then local h=c:FindFirstChildOfClass("Humanoid") if h then h.Health=0 end end
+end)
 mkSec(pages["PLAYER"],"// CAMERA")
 mkSli(pages["PLAYER"],"FOV",70,120,70,function(v) cam.FieldOfView=v end)
 mkSec(pages["PLAYER"],"// UTILITIES")
@@ -1413,7 +1415,7 @@ task.spawn(function()
     end
 end)
 
-print("[HACKER NEKO v12.6-LITE] loaded")
+print("[HACKER NEKO v12.6-LITE] loaded - Reset Character restored")
 
 end)
 
