@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============ HACKER NEKO v12.8 v13 (CHILL - NO COMBAT) ==============
+-- ========================= NYT MODS V3 =============================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -32,26 +32,96 @@ local sg=Instance.new("ScreenGui")
 sg.Name="HackerNeko" sg.ResetOnSpawn=false sg.IgnoreGuiInset=true sg.DisplayOrder=9999
 sg.Parent=gp
 
--- ===== SOUND (âm thanh có sẵn của Roblox, không cần mạng) =====
+-- ===== SOUND: ASMR bàn phím cơ ("lục cục") =====
+-- Tự tạo file WAV tiếng gõ phím (cạch + thock) rồi phát bằng getcustomasset.
+-- Executor không hỗ trợ writefile/getcustomasset thì dùng tạm âm thanh có sẵn của Roblox.
 local SS=game:GetService("SoundService")
-local SND={on=true,vol=0.5}
-local SOUND_IDS={
-    click="rbxasset://sounds/button.wav",
-    on="rbxasset://sounds/switch.wav",
-    off="rbxasset://sounds/snap.mp3",
-    open="rbxasset://sounds/electronicpingshort.wav",
-    tick="rbxasset://sounds/clickfast.wav",
-}
-local function playSnd(name,pitch)
+local SND={on=true,vol=0.6}
+local KB={down={},up={},space={}}
+local KBVAR={down=4,up=3,space=3}
+local FALLBACK={down="rbxasset://sounds/clickfast.wav",up="rbxasset://sounds/clickfast.wav",space="rbxasset://sounds/button.wav"}
+
+local function buildWav(kind,seed)
+    local rate=22050
+    local dur=(kind=="down" and 0.09) or (kind=="up" and 0.055) or 0.14
+    local n=math.floor(rate*dur)
+    local rng=Random.new(seed)
+    local f1=(kind=="space") and rng:NextNumber(110,135) or rng:NextNumber(170,215)
+    local f2=f1*2.3
+    local prev=0
+    local out={}
+    for i=0,n-1 do
+        local t=i/rate
+        local nz=rng:NextNumber(-1,1)
+        local hp=nz-prev prev=nz
+        local v
+        if kind=="down" then
+            v=hp*math.exp(-t*110)*0.55+math.sin(2*math.pi*f1*t)*math.exp(-t*48)*0.55+math.sin(2*math.pi*f2*t)*math.exp(-t*80)*0.2
+        elseif kind=="up" then
+            v=hp*math.exp(-t*170)*0.35+math.sin(2*math.pi*(f1*2.2)*t)*math.exp(-t*110)*0.18
+        else
+            v=hp*math.exp(-t*80)*0.45+math.sin(2*math.pi*f1*t)*math.exp(-t*26)*0.8+math.sin(2*math.pi*f2*t)*math.exp(-t*60)*0.25
+        end
+        if i<24 then v=v*(i/24) end
+        v=math.clamp(v,-1,1)
+        out[#out+1]=string.pack("<i2",math.floor(v*30000))
+    end
+    local data=table.concat(out)
+    return "RIFF"..string.pack("<I4",36+#data).."WAVEfmt "..string.pack("<I4I2I2I4I4I2I2",16,1,1,rate,rate*2,2,16).."data"..string.pack("<I4",#data)..data
+end
+
+task.spawn(function()
+    local getAsset=getcustomasset or getsynasset
+    if not (writefile and isfile and getAsset) then return end
+    for kind,cnt in pairs(KBVAR) do
+        for i=1,cnt do
+            local name="NekoKB_v1_"..kind..i..".wav"
+            local ok,res=pcall(function()
+                if not isfile(name) then
+                    writefile(name,buildWav(kind,i*97+(kind=="up" and 7 or (kind=="space" and 13 or 0))))
+                end
+                return getAsset(name)
+            end)
+            if ok and type(res)=="string" and res~="" then table.insert(KB[kind],res) end
+            task.wait()
+        end
+    end
+end)
+
+local function playKey(kind,vol,pitch)
     if not SND.on then return end
     pcall(function()
-        local id=SOUND_IDS[name] if not id then return end
+        local list=KB[kind]
+        local custom=#list>0
         local sd=Instance.new("Sound")
-        sd.SoundId=id sd.Volume=SND.vol sd.PlaybackSpeed=pitch or 1
+        sd.SoundId=custom and list[math.random(1,#list)] or FALLBACK[kind]
+        sd.Volume=math.clamp(SND.vol*(vol or 1)*(0.85+math.random()*0.3),0,2)
+        local pit=(pitch or 1)*(0.94+math.random()*0.12)
+        if not custom then
+            if kind=="up" then pit=pit*0.75 elseif kind=="space" then pit=pit*0.55 end
+        end
+        sd.PlaybackSpeed=pit
         sd.Parent=SS
         sd:Play()
-        task.delay(2,function() sd:Destroy() end)
+        task.delay(1.2,function() sd:Destroy() end)
     end)
+end
+local function keystroke(vol,pitch,space)
+    playKey(space and "space" or "down",vol,pitch)
+    task.delay(0.045+math.random()*0.05,function() playKey("up",vol*0.6,pitch) end)
+end
+local function playSnd(name,pitch)
+    if not SND.on then return end
+    if name=="click" then keystroke(1,pitch)
+    elseif name=="tick" then playKey("down",0.45,pitch or 1.15)
+    elseif name=="on" then keystroke(1.1,1.05,true)
+    elseif name=="off" then keystroke(1,0.9,true)
+    elseif name=="open" then
+        task.spawn(function()
+            for _=1,5 do keystroke(0.7+math.random()*0.3,1+math.random()*0.15) task.wait(0.055+math.random()*0.05) end
+            keystroke(1.1,0.95,true)
+        end)
+    end
 end
 
 local ef=Instance.new("Folder",gp) ef.Name="NekoESP"
@@ -59,10 +129,11 @@ local epf=Instance.new("Folder",ef) epf.Name="Players"
 
 local stt={ws=16,jp=50}
 local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
-    noclip=false,mapBright=false,fps=false,infJump=false}
+    noclip=false,mapBright=false,fps=false,infJump=false,antiKB=true}
 
 local teleportTo
 local fovCustom=nil
+local nlSafe=nil local nlGroundT=0
 
 local hfa=(writefile~=nil) and (readfile~=nil) and (isfile~=nil)
 local WPF="NekoWPs_"..tostring(game.PlaceId)..".json"
@@ -121,18 +192,47 @@ local stkGlow=Instance.new("UIStroke",main) stkGlow.Color=G stkGlow.Thickness=5 
 local stkGrad=Instance.new("UIGradient",stk)
 stkGrad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,G),ColorSequenceKeypoint.new(0.5,CY),ColorSequenceKeypoint.new(1,G)})
 
+-- ===== HUD DECOR: góc khung + tia quét (scanline) =====
+local brackets={}
+local function corner(ax,ay)
+    local ox=(ax==0) and -3 or 3
+    local oy=(ay==0) and -3 or 3
+    local hz=Instance.new("Frame",main)
+    hz.Size=UDim2.new(0,18,0,2) hz.AnchorPoint=Vector2.new(ax,ay) hz.Position=UDim2.new(ax,ox,ay,oy)
+    hz.BackgroundColor3=CY hz.BorderSizePixel=0 hz.ZIndex=130
+    local vz=Instance.new("Frame",main)
+    vz.Size=UDim2.new(0,2,0,18) vz.AnchorPoint=Vector2.new(ax,ay) vz.Position=UDim2.new(ax,ox,ay,oy)
+    vz.BackgroundColor3=CY vz.BorderSizePixel=0 vz.ZIndex=130
+    table.insert(brackets,hz) table.insert(brackets,vz)
+end
+corner(0,0) corner(1,0) corner(0,1) corner(1,1)
+
+local scanClip=Instance.new("Frame",main)
+scanClip.Size=UDim2.new(1,-4,1,-4) scanClip.Position=UDim2.new(0,2,0,2)
+scanClip.BackgroundTransparency=1 scanClip.ClipsDescendants=true scanClip.ZIndex=140
+local scan=Instance.new("Frame",scanClip)
+scan.Size=UDim2.new(1,0,0,26) scan.Position=UDim2.new(0,0,0,-30)
+scan.BackgroundColor3=G scan.BackgroundTransparency=0.82 scan.BorderSizePixel=0 scan.ZIndex=141
+local scanGrad=Instance.new("UIGradient",scan) scanGrad.Rotation=90
+scanGrad.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0),NumberSequenceKeypoint.new(1,1)})
+
+-- ===== MATRIX RAIN =====
 local rainFrame=Instance.new("Frame",main)
 rainFrame.Size=UDim2.new(1,-4,1,-4) rainFrame.Position=UDim2.new(0,2,0,2)
 rainFrame.BackgroundTransparency=1 rainFrame.ClipsDescendants=true rainFrame.ZIndex=1
 local rainCols={}
-local RAIN_STR=""
-for j=1,18 do RAIN_STR=RAIN_STR..(math.random()>0.5 and "1" or "0").."\n" end
-for i=1,4 do
+local HEXC="0123456789ABCDEF"
+local function rainStr(n)
+    local t={}
+    for j=1,n do local k=math.random(1,16) t[j]=string.sub(HEXC,k,k) end
+    return table.concat(t,"\n")
+end
+for i=1,16 do
     local lbl=Instance.new("TextLabel",rainFrame)
-    lbl.Size=UDim2.new(0,12,0,200) lbl.Position=UDim2.new(0,(i-1)*100,0,0)
-    lbl.BackgroundTransparency=1 lbl.Text=RAIN_STR lbl.Font=Enum.Font.Code lbl.TextSize=11
-    lbl.TextColor3=G2 lbl.TextTransparency=0.92 lbl.TextYAlignment=Enum.TextYAlignment.Top lbl.ZIndex=1
-    table.insert(rainCols,{lbl=lbl,offset=math.random()*200,speed=20+math.random()*40})
+    lbl.Size=UDim2.new(0,12,0,400) lbl.Position=UDim2.new(0,(i-1)*29+6,0,-math.random(0,380))
+    lbl.BackgroundTransparency=1 lbl.Text=rainStr(26) lbl.Font=Enum.Font.Code lbl.TextSize=11
+    lbl.TextColor3=G2 lbl.TextTransparency=0.8 lbl.TextYAlignment=Enum.TextYAlignment.Top lbl.ZIndex=1
+    table.insert(rainCols,{lbl=lbl,offset=-math.random(0,380),speed=30+math.random()*60})
 end
 
 local hd=Instance.new("Frame",main)
@@ -234,19 +334,76 @@ dlgOverlay.InputBegan:Connect(function(i)
 end)
 
 local tabs={"MOVE","ESP","PLAYER","TELE","INFO"}
+local TAB_SHAPE={MOVE="diamond",ESP="ring",PLAYER="circle",TELE="boxin",INFO="square"}
 local pages={} local tabBtns={}
+local activeTab=nil
 
-local function switchTab(name)
-    for n,p in pairs(pages) do p.Visible=(n==name) end
-    for n,b in pairs(tabBtns) do
-        if n==name then
-            b.bg.BackgroundColor3=G b.bg.BackgroundTransparency=0.15
-            b.txt.TextColor3=Color3.new(0,0,0) b.pfx.Text="> " b.pfx.TextColor3=Color3.new(0,0,0)
+-- gõ chữ lên thanh trạng thái (hiệu ứng terminal)
+local stToken=0
+local function typeStatus(text,color)
+    stToken=stToken+1
+    local my=stToken
+    stLbl.TextColor3=color or G
+    task.spawn(function()
+        for i=1,#text do
+            if my~=stToken then return end
+            stLbl.Text=string.sub(text,1,i)
+            if main.Visible and i%3==0 then playKey("down",0.22,1.25+math.random()*0.3) end
+            task.wait(0.016)
+        end
+    end)
+end
+
+local flash=Instance.new("Frame",ct)
+flash.Size=UDim2.new(1,0,1,0) flash.BackgroundColor3=G flash.BackgroundTransparency=1
+flash.BorderSizePixel=0 flash.ZIndex=150
+Instance.new("UICorner",flash).CornerRadius=UDim.new(0,4)
+
+-- icon dạng hình khối (không dùng emoji)
+local function mkShape(parent,kind)
+    local box=Instance.new("Frame",parent)
+    box.Size=UDim2.new(0,18,0,18) box.Position=UDim2.new(0,8,.5,-9) box.BackgroundTransparency=1 box.ZIndex=112
+    local parts={}
+    local function fr(sz,rot,round,hollow)
+        local f=Instance.new("Frame",box)
+        f.Size=sz f.AnchorPoint=Vector2.new(.5,.5) f.Position=UDim2.new(.5,0,.5,0)
+        f.Rotation=rot f.ZIndex=113 f.BorderSizePixel=0
+        if round then Instance.new("UICorner",f).CornerRadius=UDim.new(1,0) end
+        if hollow then
+            f.BackgroundTransparency=1
+            local st=Instance.new("UIStroke",f) st.Thickness=1.5
+            table.insert(parts,{st=st})
         else
-            b.bg.BackgroundColor3=BG2 b.bg.BackgroundTransparency=0.5
-            b.txt.TextColor3=G2 b.pfx.Text="  " b.pfx.TextColor3=G2
+            table.insert(parts,{f=f})
         end
     end
+    if kind=="diamond" then fr(UDim2.new(0,11,0,11),45,false,false)
+    elseif kind=="ring" then fr(UDim2.new(0,16,0,16),0,true,true) fr(UDim2.new(0,5,0,5),0,true,false)
+    elseif kind=="circle" then fr(UDim2.new(0,13,0,13),0,true,false)
+    elseif kind=="boxin" then fr(UDim2.new(0,15,0,15),0,false,true) fr(UDim2.new(0,6,0,6),0,false,false)
+    else fr(UDim2.new(0,12,0,12),0,false,false) end
+    return function(col)
+        for _,p in ipairs(parts) do
+            if p.f then p.f.BackgroundColor3=col else p.st.Color=col end
+        end
+    end
+end
+
+local function switchTab(name)
+    activeTab=name
+    for n,p in pairs(pages) do p.Visible=(n==name) end
+    for n,b in pairs(tabBtns) do
+        local on=(n==name)
+        T:Create(b.bg,TweenInfo.new(0.15),{BackgroundColor3=on and G or BG2,BackgroundTransparency=on and 0.15 or 0.5}):Play()
+        b.txt.TextColor3=on and Color3.new(0,0,0) or G2
+        b.setColor(on and Color3.new(0,0,0) or G2)
+    end
+    local pg=pages[name]
+    pg.Position=UDim2.new(0,20,0,4)
+    T:Create(pg,TweenInfo.new(0.22,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Position=UDim2.new(0,4,0,4)}):Play()
+    flash.BackgroundTransparency=0.8
+    T:Create(flash,TweenInfo.new(0.35),{BackgroundTransparency=1}):Play()
+    typeStatus("> cd /"..string.lower(name).." ... [OK]")
 end
 
 for _,n in ipairs(tabs) do
@@ -264,16 +421,16 @@ for i,n in ipairs(tabs) do
     b.Size=UDim2.new(1,0,0,32) b.BackgroundColor3=BG2 b.BackgroundTransparency=0.5
     b.BorderSizePixel=0 b.Text="" b.AutoButtonColor=false b.LayoutOrder=i b.ZIndex=111
     Instance.new("UICorner",b).CornerRadius=UDim.new(0,3)
-    local pfx=Instance.new("TextLabel",b)
-    pfx.Size=UDim2.new(0,14,1,0) pfx.Position=UDim2.new(0,4,0,0)
-    pfx.BackgroundTransparency=1 pfx.Text="  " pfx.Font=Enum.Font.Code pfx.TextSize=12
-    pfx.TextColor3=G2 pfx.TextXAlignment=Enum.TextXAlignment.Left pfx.ZIndex=112
+    local setColor=mkShape(b,TAB_SHAPE[n])
+    setColor(G2)
     local txt=Instance.new("TextLabel",b)
-    txt.Size=UDim2.new(1,-20,1,0) txt.Position=UDim2.new(0,18,0,0)
-    txt.BackgroundTransparency=1 txt.Text=({MOVE="🏃",ESP="👁",PLAYER="👤",TELE="📍",INFO="📊"})[n].." "..n txt.Font=Enum.Font.Code txt.TextSize=12
+    txt.Size=UDim2.new(1,-36,1,0) txt.Position=UDim2.new(0,32,0,0)
+    txt.BackgroundTransparency=1 txt.Text=n txt.Font=Enum.Font.Code txt.TextSize=12
     txt.TextColor3=G2 txt.TextXAlignment=Enum.TextXAlignment.Left txt.ZIndex=112
-    b.MouseButton1Click:Connect(function() playSnd("tick") switchTab(n) end)
-    tabBtns[n]={bg=b,txt=txt,pfx=pfx}
+    b.MouseEnter:Connect(function() if activeTab~=n then T:Create(b,TweenInfo.new(0.1),{BackgroundTransparency=0.2}):Play() end end)
+    b.MouseLeave:Connect(function() if activeTab~=n then T:Create(b,TweenInfo.new(0.1),{BackgroundTransparency=0.5}):Play() end end)
+    b.MouseButton1Click:Connect(function() playSnd("click") switchTab(n) end)
+    tabBtns[n]={bg=b,txt=txt,setColor=setColor}
 end
 
 local function mkSec(parent,txt)
@@ -325,10 +482,13 @@ local function mkTog(parent,name,default,cb)
         lbl.TextColor3=state and G3 or TX
     end
     render(false)
+    row.MouseEnter:Connect(function() T:Create(rs,TweenInfo.new(0.12),{Color=G2,Transparency=0}):Play() end)
+    row.MouseLeave:Connect(function() T:Create(rs,TweenInfo.new(0.12),{Color=DIM,Transparency=0.5}):Play() end)
     row.MouseButton1Click:Connect(function()
         state=not state
         render(true)
         playSnd(state and "on" or "off")
+        stToken=stToken+1
         stLbl.Text="[ "..(state and "ON " or "OFF").." ] "..name
         stLbl.TextColor3=state and G or DIM
         if cb then pcall(cb,state) end
@@ -545,60 +705,165 @@ task.spawn(function()
     end
 end)
 
--- TELEPORT
-local teleportBusy=false
+-- TELEPORT (dịch chuyển tức thì, không bay)
 teleportTo=function(targetPos,opts)
     opts=opts or {}
-    if teleportBusy and not opts.force then return false end
     local c=pl.Character if not c then return false end
     local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return false end
-    teleportBusy=true
-    local startPos=hr.Position
+    local cf=opts.cframe or (CFrame.new(targetPos)*(hr.CFrame-hr.CFrame.Position))
+    local function snap()
+        hr.CFrame=cf
+        hr.AssemblyLinearVelocity=Vector3.zero
+        hr.AssemblyAngularVelocity=Vector3.zero
+    end
+    snap()
     task.spawn(function()
-        local dist=(targetPos-startPos).Magnitude
-        local steps=math.clamp(math.ceil(dist/40),1,15)
-        for i=1,steps do
-            if not hr or not hr.Parent then teleportBusy=false return end
-            hr.CFrame=CFrame.new(startPos:Lerp(targetPos,i/steps))
-            hr.AssemblyLinearVelocity=Vector3.zero
-            hr.AssemblyAngularVelocity=Vector3.zero
-            task.wait(0.035)
+        for _=1,4 do -- giữ vị trí vài khung hình, tránh bị game kéo ngược lại
+            RS.Heartbeat:Wait()
+            if not hr.Parent then return end
+            if (hr.Position-cf.Position).Magnitude>3 then snap() end
         end
-        if hr and hr.Parent then hr.CFrame=CFrame.new(targetPos) hr.AssemblyLinearVelocity=Vector3.zero end
-        teleportBusy=false
     end)
+    nlSafe=cf nlGroundT=tick()
     return true
 end
 
--- ============ NOCLIP ============
+-- ============ NOCLIP (mượt, chống rơi void, chống kẹt) ============
 local setNoclip
-local noclipSaved={} local noclipConn=nil
+local noclipSaved={}
+local nlSaved={}
+local nlRP=RaycastParams.new() nlRP.FilterType=Enum.RaycastFilterType.Exclude
+
 local function noclipApply(part)
     if not part:IsA("BasePart") then return end
     if noclipSaved[part]==nil then noclipSaved[part]=part.CanCollide end
     part.CanCollide=false
 end
-setNoclip=function(on)
-    if noclipConn then noclipConn:Disconnect() noclipConn=nil end
-    local c=pl.Character
+local function restoreCollide()
+    for part,orig in pairs(noclipSaved) do pcall(function() if part and part.Parent then part.CanCollide=orig end end) end
+    noclipSaved={}
+end
+local function inWall(hr,c)
+    local op=OverlapParams.new() op.FilterType=Enum.RaycastFilterType.Exclude op.FilterDescendantsInstances={c}
+    local ok,parts=pcall(function() return workspace:GetPartBoundsInBox(hr.CFrame,Vector3.new(1.8,4.5,1),op) end)
+    if not ok then return false end
+    for _,p in ipairs(parts) do if p.CanCollide then return true end end
+    return false
+end
+local function nlHumanoid(on)
+    local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid") if not h then return end
     if on then
-        for part,orig in pairs(noclipSaved) do pcall(function() if part and part.Parent then part.CanCollide=orig end end) end
-        noclipSaved={}
-        if c then
-            for _,p in ipairs(c:GetDescendants()) do noclipApply(p) end
-            noclipConn=c.DescendantAdded:Connect(noclipApply)
-        end
+        if nlSaved.auto==nil then nlSaved.auto=h.AutoJumpEnabled end
+        pcall(function() h.AutoJumpEnabled=false end) -- không tự nhảy khi chạm tường
+        pcall(function() if nlSaved.pauto==nil then nlSaved.pauto=pl.AutoJumpEnabled end pl.AutoJumpEnabled=false end)
+        pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Climbing,false) end) -- không bám vào thang/tường
     else
-        for part,orig in pairs(noclipSaved) do pcall(function() if part and part.Parent then part.CanCollide=orig end end) end
-        noclipSaved={}
+        if nlSaved.auto~=nil then pcall(function() h.AutoJumpEnabled=nlSaved.auto end) nlSaved.auto=nil end
+        if nlSaved.pauto~=nil then pcall(function() pl.AutoJumpEnabled=nlSaved.pauto end) nlSaved.pauto=nil end
+        pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Climbing,true) end)
+    end
+end
+setNoclip=function(on)
+    local c=pl.Character
+    local hr=c and c:FindFirstChild("HumanoidRootPart")
+    if on then
+        if hr then nlSafe=hr.CFrame nlGroundT=tick() end
+        nlHumanoid(true)
+    else
+        if hr and inWall(hr,c) then -- tắt noclip khi đang trong tường: đưa ra chỗ an toàn
+            hr.CFrame=(nlSafe or hr.CFrame)+Vector3.new(0,3,0)
+            hr.AssemblyLinearVelocity=Vector3.zero
+        end
+        restoreCollide()
+        nlHumanoid(false)
     end
 end
 RS.Stepped:Connect(function()
-    if tg.noclip then
-        local c=pl.Character
-        if c then
-            for _,p in ipairs(c:GetDescendants()) do
-                if p:IsA("BasePart") then noclipApply(p) end
+    if not tg.noclip then return end
+    local c=pl.Character if not c then return end
+    for _,p in ipairs(c:GetDescendants()) do
+        if p:IsA("BasePart") then noclipApply(p) end
+    end
+end)
+RS.Heartbeat:Connect(function() -- chống rơi xuống lòng đất / void
+    if not tg.noclip then return end
+    local c=pl.Character
+    local hr=c and c:FindFirstChild("HumanoidRootPart")
+    local h=c and c:FindFirstChildOfClass("Humanoid")
+    if not hr or not h or h.Health<=0 then return end
+    local now=tick()
+    if h.FloorMaterial~=Enum.Material.Air then nlSafe=hr.CFrame nlGroundT=now return end
+    if not nlSafe then return end
+    local y=hr.Position.Y
+    local rescue=false
+    if y<workspace.FallenPartsDestroyHeight+40 then
+        rescue=true
+    elseif now-nlGroundT<1.5 and y<nlSafe.Position.Y-3 then
+        nlRP.FilterDescendantsInstances={c}
+        local r=workspace:Raycast(hr.Position,Vector3.new(0,15,0),nlRP)
+        if r and r.Instance.CanCollide then rescue=true end -- có sàn phía trên = vừa lọt xuống
+    end
+    if rescue then
+        hr.CFrame=nlSafe+Vector3.new(0,3,0)
+        hr.AssemblyLinearVelocity=Vector3.zero hr.AssemblyAngularVelocity=Vector3.zero
+        nlGroundT=now
+    end
+end)
+
+-- ============ ANTI KNOCKBACK (chạy ngầm) ============
+local MOVERS={BodyVelocity=true,BodyForce=true,BodyThrust=true,BodyPosition=true,BodyAngularVelocity=true,
+    BodyGyro=true,LinearVelocity=true,VectorForce=true,AngularVelocity=true,Torque=true}
+local akbConn=nil
+local function akbStates(on)
+    local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid") if not h then return end
+    for _,st in ipairs({Enum.HumanoidStateType.FallingDown,Enum.HumanoidStateType.Ragdoll}) do
+        pcall(function() h:SetStateEnabled(st,not on) end)
+    end
+end
+local function akbHook(char)
+    if akbConn then akbConn:Disconnect() akbConn=nil end
+    akbConn=char.DescendantAdded:Connect(function(d)
+        if tg.antiKB and MOVERS[d.ClassName] then
+            task.defer(function() pcall(function() d:Destroy() end) end)
+        end
+    end)
+    akbStates(tg.antiKB)
+end
+RS.Heartbeat:Connect(function()
+    if not tg.antiKB then return end
+    local c=pl.Character
+    local h=c and c:FindFirstChildOfClass("Humanoid")
+    local hr=c and c:FindFirstChild("HumanoidRootPart")
+    if not h or not hr or h.Health<=0 then return end
+    local st=h:GetState()
+    if st==Enum.HumanoidStateType.FallingDown or st==Enum.HumanoidStateType.Ragdoll or st==Enum.HumanoidStateType.PlatformStand then
+        pcall(function() h.PlatformStand=false h:ChangeState(Enum.HumanoidStateType.GetUp) end)
+    end
+    if h.PlatformStand then h.PlatformStand=false end
+    if h.WalkSpeed<1 and not h.Sit then h.WalkSpeed=16 end -- hết bị đứng hình
+    local v=hr.AssemblyLinearVelocity
+    local cap=math.max(h.WalkSpeed,stt.ws,16)
+    local hv=Vector3.new(v.X,0,v.Z)
+    local limit=cap*1.8+14
+    local ny=v.Y
+    local maxUp=math.max(h.JumpPower,stt.jp,50)*1.4+12
+    if ny>maxUp then ny=maxUp end
+    if hv.Magnitude>limit then
+        local md=h.MoveDirection
+        local keep=(md.Magnitude>0.1) and (md.Unit*cap) or Vector3.zero
+        hr.AssemblyLinearVelocity=Vector3.new(keep.X,ny,keep.Z)
+    elseif ny~=v.Y then
+        hr.AssemblyLinearVelocity=Vector3.new(v.X,ny,v.Z)
+    end
+    if hr.AssemblyAngularVelocity.Magnitude>20 then hr.AssemblyAngularVelocity=Vector3.zero end
+end)
+RS.Stepped:Connect(function() -- người khác không đẩy/hất được mình bằng va chạm
+    if not tg.antiKB then return end
+    for _,p in ipairs(P:GetPlayers()) do
+        local ch=(p~=pl) and p.Character
+        if ch then
+            for _,part in ipairs(ch:GetChildren()) do
+                if part:IsA("BasePart") and part.CanCollide then part.CanCollide=false end
             end
         end
     end
@@ -608,12 +873,14 @@ local function onCharSpawn(char)
     local hr=char:WaitForChild("HumanoidRootPart",10)
     local h=char:WaitForChild("Humanoid",10)
     if not hr or not h then return end
+    akbHook(char)
     task.wait(0.4)
     if not hr.Parent then return end
+    nlSaved={}
     if tg.noclip then task.wait(0.2) if setNoclip then setNoclip(true) end end
 end
 pl.CharacterAdded:Connect(onCharSpawn)
-if pl.Character then task.spawn(function() pl.Character:WaitForChild("HumanoidRootPart",5) end) end
+if pl.Character then task.spawn(function() onCharSpawn(pl.Character) end) end
 
 -- ============ ESP PLAYER ============
 local evs={} local trcs={}
@@ -748,10 +1015,11 @@ mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on setFPS(on) end)
 mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on setMapBright(on) end)
 mkSec(pages["PLAYER"],"// SURVIVAL")
 mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclip(on) end)
+mkTog(pages["PLAYER"],"ANTI KNOCKBACK (auto)",true,function(on) tg.antiKB=on akbStates(on) end)
 mkSec(pages["PLAYER"],"// CAMERA")
 mkSli(pages["PLAYER"],"FOV",70,120,70,function(v) cam.FieldOfView=v fovCustom=(v~=70) and v or nil end)
 mkSec(pages["PLAYER"],"// SOUND")
-mkSli(pages["PLAYER"],"Volume",0,100,50,function(v) SND.vol=v/100 end)
+mkSli(pages["PLAYER"],"Volume",0,100,60,function(v) SND.vol=v/100 end)
 mkSec(pages["PLAYER"],"// UTILITIES")
 mkBtn(pages["PLAYER"],"RESET CHARACTER",function()
     local c=pl.Character
@@ -832,7 +1100,7 @@ local function buildWPRow(index)
         if wps[index] then
             local sc=cfFromArr(wps[index])
             if sc then
-                teleportTo(sc.Position+Vector3.new(0,wpHeight,0))
+                teleportTo(sc.Position+Vector3.new(0,wpHeight,0),{cframe=sc+Vector3.new(0,wpHeight,0)})
                 stLbl.Text="[ OK ] Teleport #"..index stLbl.TextColor3=G
             end
         else
@@ -958,7 +1226,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v13-CHILL"
+                infoRefs.ver.Text="v14-CHILL"
                 local a={}
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
@@ -981,14 +1249,20 @@ local bootRunning=false
 local function bootSequence()
     if bootRunning then return end
     bootRunning=true
-    stLbl.Text="> init kernel... [OK]"
-    task.wait(0.15)
-    stLbl.Text="[ OK ] ready"
     task.spawn(function()
         title.Text=""
-        for i=1,#titleTarget do title.Text=string.sub(titleTarget,1,i) task.wait(0.012) end
+        for i=1,#titleTarget do
+            title.Text=string.sub(titleTarget,1,i)
+            if i%2==1 then playKey("down",0.35,1+math.random()*0.25) end
+            task.wait(0.03)
+        end
+        bootRunning=false
     end)
-    bootRunning=false
+    task.spawn(function()
+        for _,ln in ipairs({"> init kernel ... [OK]","> mount /dev/neko ... [OK]","> access granted"}) do
+            typeStatus(ln) task.wait(0.4)
+        end
+    end)
 end
 
 local menuOpen=false
@@ -1001,6 +1275,14 @@ local function showMenu()
     T:Create(main,TweenInfo.new(0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,470,0,380),BackgroundTransparency=0.05}):Play()
     stk.Transparency=1
     T:Create(stk,TweenInfo.new(0.25),{Transparency=0}):Play()
+    local basePos=main.Position
+    task.spawn(function() -- giật hình (glitch) lúc mở
+        for _=1,5 do
+            main.Position=UDim2.new(basePos.X.Scale,basePos.X.Offset+math.random(-5,5),basePos.Y.Scale,basePos.Y.Offset+math.random(-2,2))
+            task.wait(0.03)
+        end
+        main.Position=basePos
+    end)
     bootSequence()
 end
 local function hideMenu()
@@ -1015,16 +1297,29 @@ cl.MouseButton1Click:Connect(hideMenu)
 
 task.spawn(function()
     local tGlow=0 local tCursor=0
+    local nextGlitch=2 local glitchUntil=0
     while true do
         task.wait(0.06)
         tGlow=tGlow+0.06 tCursor=tCursor+0.06
         tglGlow.Transparency=0.7+math.abs(math.sin(tGlow*2))*0.2
         stkGrad.Rotation=(tGlow*60)%360
         if menuOpen then
+            stkGlow.Transparency=0.72+math.abs(math.sin(tGlow*1.5))*0.2
             for _,c in ipairs(rainCols) do
-                c.offset=c.offset+c.speed*0.12
-                if c.offset>200 then c.offset=-200 end
-                c.lbl.Position=UDim2.new(c.lbl.Position.X.Scale,c.lbl.Position.X.Offset,0,c.offset)
+                c.offset=c.offset+c.speed*0.06
+                if c.offset>380 then
+                    c.offset=-380 c.lbl.Text=rainStr(26)
+                end
+                c.lbl.Position=UDim2.new(0,c.lbl.Position.X.Offset,0,c.offset)
+            end
+            for _,b in ipairs(brackets) do b.BackgroundTransparency=0.05+math.abs(math.sin(tGlow*3))*0.5 end
+            scan.Position=UDim2.new(0,0,0,((tGlow*90)%440)-30)
+            if tGlow>=nextGlitch then nextGlitch=tGlow+2.5+math.random()*3 glitchUntil=tGlow+0.18 end
+            if tGlow<glitchUntil then
+                title.TextColor3=(math.random()>0.5) and CY or RED
+                title.Position=UDim2.new(0,10+math.random(-3,3),0,math.random(-1,1))
+            else
+                title.TextColor3=G title.Position=UDim2.new(0,10,0,0)
             end
             if tCursor>=0.6 then tCursor=0 cursor.Visible=not cursor.Visible end
         end
@@ -1214,7 +1509,7 @@ P.PlayerRemoving:Connect(function(p)
 end)
 
 playSnd("open",1.2)
-print("[HACKER NEKO v13 CHILL] loaded")
+print("[HACKER NEKO v14 CHILL] loaded")
 
 end)
 
