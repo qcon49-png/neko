@@ -1,5 +1,5 @@
 -- ==================================================================
--- ============= NYT MODS v27 — FIXED AIMBOT + TELE PICKER ==========
+-- ============= NYT MODS v27 — FIXED FOV + MOBILE AUTO AIM =========
 -- ==================================================================
 local ok, err = pcall(function()
     local P = game:GetService("Players")
@@ -47,6 +47,7 @@ local ok, err = pcall(function()
     local fovUI = Instance.new("Frame", sg)
     fovUI.Name = "FOVCircle"
     fovUI.AnchorPoint = Vector2.new(0.5, 0.5)
+    fovUI.Position = UDim2.new(0.5, 0, 0.5, 0) -- Căn giữa tuyệt đối
     fovUI.BackgroundTransparency = 1
     fovUI.BorderSizePixel = 0
     fovUI.Visible = false
@@ -100,9 +101,9 @@ local ok, err = pcall(function()
     local acLastStat = 0
     local MAX_PER_FRAME = 30
 
-    -- ================= FIX: aimS có requireHold =================
-    local aimS = {on = true, teamCheck = true, fovAmount = 250, requireHold = true}
-    -- ============================================================
+    -- ================= FIX: MẶC ĐỊNH BẬT AUTO AIM CHO ĐIỆN THOẠI =================
+    local aimS = {on = true, teamCheck = true, fovAmount = 250, requireHold = false} 
+    -- ==============================================================================
     local aimRunning = false
     local aimLocked = nil
     local aimOriginalSens = nil
@@ -127,14 +128,12 @@ local ok, err = pcall(function()
         return friendCache[uid]
     end
 
-    -- ================= FIX: isTeammate (bỏ TeamColor check) =================
     local function isTeammate(player)
         if player == pl then return true end
         if player.Team and pl.Team and player.Team == pl.Team then return true end
         if isFriendCached(player.UserId) then return true end
         return false
     end
-    -- =======================================================================
 
     local hfa = (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil)
     local WPF = "NekoWPs_" .. tostring(game.PlaceId) .. ".json"
@@ -908,7 +907,6 @@ local ok, err = pcall(function()
         return true, char, part
     end
 
-    -- ================= FIX: aimVisible raycast từ Head nhân vật =================
     local function aimVisible(char, part)
         local myChar = pl.Character
         local myHead = myChar and myChar:FindFirstChild("Head")
@@ -924,7 +922,6 @@ local ok, err = pcall(function()
         local res = workspace:Raycast(origin, dir, rp)
         return res == nil
     end
-    -- =========================================================================
 
     local function aimGetCandidates()
         local list = {}
@@ -971,30 +968,26 @@ local ok, err = pcall(function()
         if inp.UserInputType == Enum.UserInputType.MouseButton2 then aimRunning = false aimCancel() end
     end)
 
-    -- ================= FIX: BindToRenderStep — FOV luôn hiện + ghim đầu + bỏ qua vật cản =================
     RS:BindToRenderStep("NekoAimLock", Enum.RenderPriority.Camera.Value + 1, function()
-        -- FOV circle: luôn hiện khi aimbot BẬT, không phụ thuộc giữ chuột
+        -- Cập nhật FOV UI vào chính giữa
         if aimS.on and not main.Visible then
-            local vp = cam.ViewportSize
-            local tl = game:GetService("GuiService"):GetGuiInset()
-            local cX = tl.X + vp.X / 2
-            local cY = tl.Y + vp.Y / 2
             local d = aimS.fovAmount * 2
             fovUI.Size = UDim2.new(0, d, 0, d)
-            fovUI.Position = UDim2.new(0, cX, 0, cY)
+            fovUI.Position = UDim2.new(0.5, 0, 0.5, 0)
             fovUI.Visible = true
             fovStroke.Color = aimLocked and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 80, 80)
         else
             fovUI.Visible = false
         end
 
+        -- Vì requireHold = false mặc định, active sẽ luôn = true nếu aimS.on = true
         local active = aimS.on and (aimRunning or aimS.requireHold == false)
 
         if active then
             if not aimLocked then
                 aimAcquire()
             elseif not aimValidate() then
-                aimAcquire() -- target bị che / chết → nhắm con gần tiếp theo
+                aimAcquire()
             end
 
             if aimLocked then
@@ -1018,7 +1011,6 @@ local ok, err = pcall(function()
             aimCancel()
         end
 
-        -- Drawing circle dự phòng
         if aimCircle then
             if aimS.on then
                 local vp = cam.ViewportSize
@@ -1035,7 +1027,6 @@ local ok, err = pcall(function()
             end
         end
     end)
-    -- =============================================================================================
 
     local BASE_LIGHTING = {Brightness = L.Brightness, ClockTime = L.ClockTime, Ambient = L.Ambient, OutdoorAmbient = L.OutdoorAmbient, GlobalShadows = L.GlobalShadows, FogEnd = L.FogEnd, FogStart = L.FogStart, ExposureCompensation = L.ExposureCompensation}
     local function restoreLighting() pcall(function() for k, v in pairs(BASE_LIGHTING) do L[k] = v end end) end
@@ -1500,7 +1491,6 @@ local ok, err = pcall(function()
         end)
     end)
 
-    -- ================= FIX: TELE PLAYER PICKER (từ v22-CROSS) =================
     mkSec(pages["TELE"], "// TELEPORT")
     local tpTargetBtn = mkBtn(pages["TELE"], "SELECT PLAYER", function() end)
     local function openTpPicker()
@@ -1545,7 +1535,6 @@ local ok, err = pcall(function()
         task.wait(1)
         tpCD = false
     end)
-    -- ==========================================================================
 
     mkSec(pages["TELE"], "// AUTO FLY")
     mkTog(pages["TELE"], "AUTO FLY", false, function(on) autoFlyState.on = on end)
@@ -1586,9 +1575,8 @@ local ok, err = pcall(function()
     mkTog(pages["AIM"], "AIMBOT", true, function(on) aimS.on = on if not on then aimCancel() end end)
     mkTog(pages["AIM"], "TEAM CHECK (Team+Friend)", true, function(on) aimS.teamCheck = on end)
     mkSli(pages["AIM"], "FOV", 50, 800, 250, function(v) aimS.fovAmount = v end)
-    -- ================= FIX: Toggle Require Hold =================
-    mkTog(pages["AIM"], "REQUIRE HOLD (RMB)", true, function(on) aimS.requireHold = on end)
-    -- ============================================================
+    -- Đổi thành AUTO AIM, bật lên là auto lock luôn không cần giữ nút
+    mkTog(pages["AIM"], "AUTO AIM (LOCK)", true, function(on) aimS.requireHold = not on end)
 
     local infoRefs = {}
     local infoRoot = Instance.new("Frame", pages["INFO"])
@@ -1857,7 +1845,7 @@ local ok, err = pcall(function()
 
     switchTab("MOVE")
     playSnd("open")
-    print("[NYT v27] loaded — aimbot fixed + tele picker fixed")
+    print("[NYT v27] loaded — Auto Aim Mobile + Fixed FOV")
 end)
 
 if not ok then
