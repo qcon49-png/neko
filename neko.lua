@@ -33,8 +33,6 @@ sg.Name="HackerNeko" sg.ResetOnSpawn=false sg.IgnoreGuiInset=true sg.DisplayOrde
 sg.Parent=gp
 
 -- ===== SOUND: ASMR bàn phím cơ ("lục cục") =====
--- Tự tạo file WAV tiếng gõ phím (cạch + thock) rồi phát bằng getcustomasset.
--- Executor không hỗ trợ writefile/getcustomasset thì dùng tạm âm thanh có sẵn của Roblox.
 local SS=game:GetService("SoundService")
 local SND={on=true,vol=0.6}
 local KB={down={},up={},space={}}
@@ -130,6 +128,39 @@ local epf=Instance.new("Folder",ef) epf.Name="Players"
 local stt={ws=16,jp=50}
 local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
     noclip=false,mapBright=false,fps=false,infJump=false,antiKB=true}
+
+-- ===== STATE CHO SPIN + AUTO FLY =====
+local spinState={on=false, speed=5}
+local autoFlyState={on=false, smooth=18}
+local spinSavedAutoRotate=nil
+local autoFlySavedPlatform=nil
+
+local function setSpinState(on)
+    spinState.on=on
+    local c=pl.Character
+    local h=c and c:FindFirstChildOfClass("Humanoid")
+    if not h then return end
+    if on then
+        if spinSavedAutoRotate==nil then spinSavedAutoRotate=h.AutoRotate end
+        pcall(function() h.AutoRotate=false end)
+    else
+        if spinSavedAutoRotate~=nil then
+            pcall(function() h.AutoRotate=spinSavedAutoRotate end)
+            spinSavedAutoRotate=nil
+        end
+    end
+end
+
+-- HEARTBEAT: spin nhân vật
+RS.Heartbeat:Connect(function(dt)
+    if not spinState.on then return end
+    if autoFlyState.on then return end
+    local c=pl.Character
+    local hr=c and c:FindFirstChild("HumanoidRootPart")
+    if not hr then return end
+    local angle=math.rad(spinState.speed*360*dt)
+    hr.CFrame=hr.CFrame*CFrame.Angles(0,angle,0)
+end)
 
 local teleportTo
 local fovCustom=nil
@@ -338,7 +369,6 @@ local TAB_SHAPE={MOVE="diamond",ESP="ring",PLAYER="circle",TELE="boxin",INFO="sq
 local pages={} local tabBtns={}
 local activeTab=nil
 
--- gõ chữ lên thanh trạng thái (hiệu ứng terminal)
 local stToken=0
 local function typeStatus(text,color)
     stToken=stToken+1
@@ -359,7 +389,6 @@ flash.Size=UDim2.new(1,0,1,0) flash.BackgroundColor3=G flash.BackgroundTranspare
 flash.BorderSizePixel=0 flash.ZIndex=150
 Instance.new("UICorner",flash).CornerRadius=UDim.new(0,4)
 
--- icon dạng hình khối (không dùng emoji)
 local function mkShape(parent,kind)
     local box=Instance.new("Frame",parent)
     box.Size=UDim2.new(0,18,0,18) box.Position=UDim2.new(0,8,.5,-9) box.BackgroundTransparency=1 box.ZIndex=112
@@ -705,7 +734,7 @@ task.spawn(function()
     end
 end)
 
--- TELEPORT (dịch chuyển tức thì, không bay)
+-- TELEPORT
 teleportTo=function(targetPos,opts)
     opts=opts or {}
     local c=pl.Character if not c then return false end
@@ -718,7 +747,7 @@ teleportTo=function(targetPos,opts)
     end
     snap()
     task.spawn(function()
-        for _=1,4 do -- giữ vị trí vài khung hình, tránh bị game kéo ngược lại
+        for _=1,4 do
             RS.Heartbeat:Wait()
             if not hr.Parent then return end
             if (hr.Position-cf.Position).Magnitude>3 then snap() end
@@ -728,7 +757,7 @@ teleportTo=function(targetPos,opts)
     return true
 end
 
--- ============ NOCLIP (mượt, chống rơi void, chống kẹt) ============
+-- ============ NOCLIP ============
 local setNoclip
 local noclipSaved={}
 local nlSaved={}
@@ -754,9 +783,9 @@ local function nlHumanoid(on)
     local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid") if not h then return end
     if on then
         if nlSaved.auto==nil then nlSaved.auto=h.AutoJumpEnabled end
-        pcall(function() h.AutoJumpEnabled=false end) -- không tự nhảy khi chạm tường
+        pcall(function() h.AutoJumpEnabled=false end)
         pcall(function() if nlSaved.pauto==nil then nlSaved.pauto=pl.AutoJumpEnabled end pl.AutoJumpEnabled=false end)
-        pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Climbing,false) end) -- không bám vào thang/tường
+        pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Climbing,false) end)
     else
         if nlSaved.auto~=nil then pcall(function() h.AutoJumpEnabled=nlSaved.auto end) nlSaved.auto=nil end
         if nlSaved.pauto~=nil then pcall(function() pl.AutoJumpEnabled=nlSaved.pauto end) nlSaved.pauto=nil end
@@ -770,7 +799,7 @@ setNoclip=function(on)
         if hr then nlSafe=hr.CFrame nlGroundT=tick() end
         nlHumanoid(true)
     else
-        if hr and inWall(hr,c) then -- tắt noclip khi đang trong tường: đưa ra chỗ an toàn
+        if hr and inWall(hr,c) then
             hr.CFrame=(nlSafe or hr.CFrame)+Vector3.new(0,3,0)
             hr.AssemblyLinearVelocity=Vector3.zero
         end
@@ -785,7 +814,7 @@ RS.Stepped:Connect(function()
         if p:IsA("BasePart") then noclipApply(p) end
     end
 end)
-RS.Heartbeat:Connect(function() -- chống rơi xuống lòng đất / void
+RS.Heartbeat:Connect(function()
     if not tg.noclip then return end
     local c=pl.Character
     local hr=c and c:FindFirstChild("HumanoidRootPart")
@@ -801,7 +830,7 @@ RS.Heartbeat:Connect(function() -- chống rơi xuống lòng đất / void
     elseif now-nlGroundT<1.5 and y<nlSafe.Position.Y-3 then
         nlRP.FilterDescendantsInstances={c}
         local r=workspace:Raycast(hr.Position,Vector3.new(0,15,0),nlRP)
-        if r and r.Instance.CanCollide then rescue=true end -- có sàn phía trên = vừa lọt xuống
+        if r and r.Instance.CanCollide then rescue=true end
     end
     if rescue then
         hr.CFrame=nlSafe+Vector3.new(0,3,0)
@@ -810,7 +839,7 @@ RS.Heartbeat:Connect(function() -- chống rơi xuống lòng đất / void
     end
 end)
 
--- ============ ANTI KNOCKBACK (chạy ngầm) ============
+-- ============ ANTI KNOCKBACK ============
 local MOVERS={BodyVelocity=true,BodyForce=true,BodyThrust=true,BodyPosition=true,BodyAngularVelocity=true,
     BodyGyro=true,LinearVelocity=true,VectorForce=true,AngularVelocity=true,Torque=true}
 local akbConn=nil
@@ -840,7 +869,7 @@ RS.Heartbeat:Connect(function()
         pcall(function() h.PlatformStand=false h:ChangeState(Enum.HumanoidStateType.GetUp) end)
     end
     if h.PlatformStand then h.PlatformStand=false end
-    if h.WalkSpeed<1 and not h.Sit then h.WalkSpeed=16 end -- hết bị đứng hình
+    if h.WalkSpeed<1 and not h.Sit then h.WalkSpeed=16 end
     local v=hr.AssemblyLinearVelocity
     local cap=math.max(h.WalkSpeed,stt.ws,16)
     local hv=Vector3.new(v.X,0,v.Z)
@@ -857,7 +886,7 @@ RS.Heartbeat:Connect(function()
     end
     if hr.AssemblyAngularVelocity.Magnitude>20 then hr.AssemblyAngularVelocity=Vector3.zero end
 end)
-RS.Stepped:Connect(function() -- người khác không đẩy/hất được mình bằng va chạm
+RS.Stepped:Connect(function()
     if not tg.antiKB then return end
     for _,p in ipairs(P:GetPlayers()) do
         local ch=(p~=pl) and p.Character
@@ -878,6 +907,15 @@ local function onCharSpawn(char)
     if not hr.Parent then return end
     nlSaved={}
     if tg.noclip then task.wait(0.2) if setNoclip then setNoclip(true) end end
+    -- re-apply spin nếu đang bật
+    spinSavedAutoRotate=nil
+    if spinState.on then
+        task.wait(0.1)
+        local hh=char:FindFirstChildOfClass("Humanoid")
+        if hh then spinSavedAutoRotate=hh.AutoRotate hh.AutoRotate=false end
+    end
+    -- auto fly platformstand sẽ được RenderStepped tự xử lý lại
+    autoFlySavedPlatform=nil
 end
 pl.CharacterAdded:Connect(onCharSpawn)
 if pl.Character then task.spawn(function() onCharSpawn(pl.Character) end) end
@@ -1000,6 +1038,16 @@ mkSec(pages["MOVE"],"// JUMP")
 mkSli(pages["MOVE"],"Jump Power",50,300,50,function(v) stt.jp=v end)
 mkTog(pages["MOVE"],"INFINITE JUMP",false,function(on) tg.infJump=on end)
 
+-- ===== SPIN CHARACTER =====
+mkSec(pages["MOVE"],"// SPIN CHARACTER")
+mkTog(pages["MOVE"],"SPIN CHARACTER",false,function(on)
+    setSpinState(on)
+    if on and autoFlyState.on then
+        stLbl.Text="[ ! ] Đang AUTO FLY, spin tạm nghỉ" stLbl.TextColor3=YEL
+    end
+end)
+mkSli(pages["MOVE"],"Spin Speed (vòng/s)",1,20,5,function(v) spinState.speed=v end)
+
 mkSec(pages["ESP"],"// PLAYER ESP")
 mkTog(pages["ESP"],"ESP LINE (RAINBOW)",false,function(on)
     tg.espLine=on
@@ -1042,482 +1090,11 @@ local function openTpPicker()
         if p~=pl then
             dlgBtn(p.Name,G,function()
                 tpSelected=p tpTargetBtn.Text="  > "..p.Name closeDlg()
+                stLbl.Text="[ OK ] Target: "..p.Name stLbl.TextColor3=G
             end)
         end
     end
     dlgBtn("CANCEL",RED,function() closeDlg() end)
     dlg.Visible=true dlgOverlay.Visible=true
 end
-tpTargetBtn.MouseButton1Click:Connect(function() openTpPicker() end)
-local tpCD=false
-mkBtn(pages["TELE"],"TELEPORT TO PLAYER",function()
-    if not tpSelected then stLbl.Text="[ ! ] Chọn người chơi trước" stLbl.TextColor3=YEL return end
-    if tpCD then return end
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart") if not hr then return end
-    local th=tpSelected.Character and tpSelected.Character:FindFirstChild("HumanoidRootPart")
-    if not th then stLbl.Text="[ ! ] Người đó chưa có nhân vật" stLbl.TextColor3=YEL return end
-    tpCD=true
-    teleportTo(th.Position+Vector3.new(0,4,0))
-    stLbl.Text="[ OK ] Teleport -> "..tpSelected.Name stLbl.TextColor3=G
-    task.wait(1)
-    tpCD=false
-end)
-
-mkSec(pages["TELE"],"// WAYPOINTS (8 SLOT)")
-mkSli(pages["TELE"],"WP Height",0,20,wpHeight,function(v) wpHeight=v saveWPs() end)
-
-local wpRows={}
-local function buildWPRow(index)
-    local row=Instance.new("Frame",pages["TELE"])
-    row.Size=UDim2.new(1,-8,0,34) row.BackgroundColor3=BG
-    row.BackgroundTransparency=0.3 row.BorderSizePixel=0
-    row.LayoutOrder=#pages["TELE"]:GetChildren()*10 row.ZIndex=112
-    Instance.new("UICorner",row).CornerRadius=UDim.new(0,3)
-    local badge=Instance.new("TextLabel",row)
-    badge.Size=UDim2.new(0,24,1,0) badge.Position=UDim2.new(0,4,0,0)
-    badge.BackgroundTransparency=1 badge.Text="#"..index badge.Font=Enum.Font.Code
-    badge.TextSize=12 badge.TextColor3=CY badge.TextXAlignment=Enum.TextXAlignment.Left badge.ZIndex=113
-    local info=Instance.new("TextLabel",row)
-    info.Size=UDim2.new(1,-140,1,0) info.Position=UDim2.new(0,30,0,0)
-    info.BackgroundTransparency=1 info.Text="EMPTY" info.Font=Enum.Font.Code
-    info.TextSize=11 info.TextColor3=DIM info.TextXAlignment=Enum.TextXAlignment.Left info.ZIndex=113
-    local function mkMiniBtn(xOffset,text,color,cb)
-        local b=Instance.new("TextButton",row)
-        b.Size=UDim2.new(0,32,0,24) b.Position=UDim2.new(1,xOffset,0.5,-12)
-        b.BackgroundColor3=BG2 b.BorderSizePixel=0 b.Text=text b.Font=Enum.Font.Code
-        b.TextSize=11 b.TextColor3=color b.AutoButtonColor=false b.ZIndex=113
-        Instance.new("UICorner",b).CornerRadius=UDim.new(0,2)
-        b.MouseButton1Click:Connect(function() playSnd("click") b.Text="..." task.wait(0.1) b.Text=text if cb then pcall(cb) end end)
-        return b
-    end
-    mkMiniBtn(-102,"SET",G,function()
-        local c=pl.Character
-        local hr=c and c:FindFirstChild("HumanoidRootPart")
-        if hr then wps[index]={hr.CFrame:GetComponents()} saveWPs() info.Text="READY" info.TextColor3=G end
-    end)
-    mkMiniBtn(-68,"GO",CY,function()
-        if wps[index] then
-            local sc=cfFromArr(wps[index])
-            if sc then
-                teleportTo(sc.Position+Vector3.new(0,wpHeight,0),{cframe=sc+Vector3.new(0,wpHeight,0)})
-                stLbl.Text="[ OK ] Teleport #"..index stLbl.TextColor3=G
-            end
-        else
-            stLbl.Text="[ ! ] Slot "..index.." trống" stLbl.TextColor3=YEL
-        end
-    end)
-    mkMiniBtn(-34,"✕",RED,function() wps[index]=nil saveWPs() info.Text="EMPTY" info.TextColor3=DIM end)
-    if wps[index] then info.Text="READY" info.TextColor3=G end
-    wpRows[index]={row=row,info=info}
-end
-for i=1,8 do buildWPRow(i) end
-
-task.spawn(function()
-    while true do
-        task.wait(2)
-        local c=pl.Character
-        local hr=c and c:FindFirstChild("HumanoidRootPart")
-        local myPos=hr and hr.Position
-        if myPos then
-            for i=1,8 do
-                local r=wpRows[i]
-                if r and wps[i] then
-                    local sc=cfFromArr(wps[i])
-                    if sc then
-                        local d=(sc.Position-myPos).Magnitude/3.57
-                        r.info.Text=string.format("READY (%.0fm)",d)
-                    end
-                end
-            end
-        end
-    end
-end)
-
-local infoRoot=Instance.new("Frame",pages["INFO"])
-infoRoot.Size=UDim2.new(1,-8,0,0) infoRoot.AutomaticSize=Enum.AutomaticSize.Y
-infoRoot.BackgroundTransparency=1 infoRoot.LayoutOrder=10 infoRoot.ZIndex=115
-local irl=Instance.new("UIListLayout",infoRoot)
-irl.Padding=UDim.new(0,6) irl.SortOrder=Enum.SortOrder.LayoutOrder
-local infoRefs={}
-local function makeCard(title,accent)
-    local card=Instance.new("Frame",infoRoot)
-    card.Size=UDim2.new(1,0,0,0) card.AutomaticSize=Enum.AutomaticSize.Y
-    card.BackgroundColor3=BG card.BackgroundTransparency=0.35 card.BorderSizePixel=0 card.ZIndex=116
-    Instance.new("UICorner",card).CornerRadius=UDim.new(0,4)
-    local cs=Instance.new("UIStroke",card) cs.Color=accent cs.Thickness=1 cs.Transparency=0.5
-    local titleBar=Instance.new("Frame",card)
-    titleBar.Size=UDim2.new(1,0,0,24) titleBar.BackgroundColor3=BG2
-    titleBar.BackgroundTransparency=0.3 titleBar.BorderSizePixel=0 titleBar.ZIndex=117
-    Instance.new("UICorner",titleBar).CornerRadius=UDim.new(0,4)
-    local bar=Instance.new("Frame",titleBar)
-    bar.Size=UDim2.new(0,2,0,10) bar.Position=UDim2.new(0,6,.5,-5)
-    bar.BackgroundColor3=accent bar.BorderSizePixel=0 bar.ZIndex=118
-    local tl=Instance.new("TextLabel",titleBar)
-    tl.Size=UDim2.new(1,-14,1,0) tl.Position=UDim2.new(0,14,0,0)
-    tl.BackgroundTransparency=1 tl.Text=title tl.Font=Enum.Font.Code
-    tl.TextSize=12 tl.TextColor3=accent tl.TextXAlignment=Enum.TextXAlignment.Left tl.ZIndex=118
-    local body=Instance.new("Frame",card)
-    body.Size=UDim2.new(1,-12,0,0) body.Position=UDim2.new(0,6,0,28)
-    body.AutomaticSize=Enum.AutomaticSize.Y body.BackgroundTransparency=1 body.ZIndex=117
-    local bl=Instance.new("UIListLayout",body)
-    bl.Padding=UDim.new(0,3) bl.SortOrder=Enum.SortOrder.LayoutOrder
-    local function row(name,color)
-        local r=Instance.new("Frame",body)
-        r.Size=UDim2.new(1,0,0,18) r.BackgroundTransparency=1 r.ZIndex=118
-        local l=Instance.new("TextLabel",r)
-        l.Size=UDim2.new(0.5,0,1,0) l.BackgroundTransparency=1 l.Text=name
-        l.Font=Enum.Font.Code l.TextSize=11 l.TextColor3=DIM l.TextXAlignment=Enum.TextXAlignment.Left l.ZIndex=119
-        local v=Instance.new("TextLabel",r)
-        v.Size=UDim2.new(0.5,0,1,0) v.Position=UDim2.new(0.5,0,0,0) v.BackgroundTransparency=1
-        v.Text="--" v.Font=Enum.Font.Code v.TextSize=12 v.TextColor3=color or G
-        v.TextXAlignment=Enum.TextXAlignment.Right v.ZIndex=119
-        return v
-    end
-    return row
-end
-local netRow=makeCard("NETWORK",CY)
-infoRefs.ping=netRow("PING",G) infoRefs.pStat=netRow("STATUS",G)
-local perfRow=makeCard("PERFORMANCE",G)
-infoRefs.fps=perfRow("FPS",CY) infoRefs.fpsAvg=perfRow("FPS AVG",CY)
-infoRefs.mem=perfRow("MEMORY",CY) infoRefs.uptime=perfRow("UPTIME",CY)
-local pRow=makeCard("PLAYER",YEL)
-infoRefs.name=pRow("NAME",YEL) infoRefs.hp=pRow("HEALTH",G) infoRefs.pos=pRow("POSITION",YEL)
-local srvRow=makeCard("SERVER",G3)
-infoRefs.game=srvRow("GAME",G3) infoRefs.place=srvRow("PLACE ID",G3) infoRefs.players=srvRow("PLAYERS",G3)
-local sysRow=makeCard("SYSTEM",ORG)
-infoRefs.time=sysRow("TIME",ORG) infoRefs.ver=sysRow("VERSION",ORG) infoRefs.active=sysRow("ACTIVE",G)
-
-local fpsHist={} local stT=tick() local frmCnt=0
-RS.RenderStepped:Connect(function() frmCnt=frmCnt+1 end)
-
-task.spawn(function()
-    while true do
-        task.wait(2)
-        if pages["INFO"] and pages["INFO"].Visible then
-            local fps=math.floor(frmCnt/2) frmCnt=0
-            table.insert(fpsHist,fps)
-            if #fpsHist>20 then table.remove(fpsHist,1) end
-            local sum=0
-            for _,v in ipairs(fpsHist) do sum=sum+v end
-            local avg=#fpsHist>0 and math.floor(sum/#fpsHist) or 0
-            local ping=0
-            pcall(function() ping=math.floor(pl:GetNetworkPing()*1000) end)
-            local stTxt,stCol="GOOD",G
-            if ping>150 then stTxt,stCol="BAD",YEL end
-            if ping>250 then stTxt,stCol="POOR",RED end
-            pcall(function()
-                infoRefs.ping.Text=ping.." ms"
-                infoRefs.pStat.Text=stTxt infoRefs.pStat.TextColor3=stCol
-                infoRefs.fps.Text=fps.." fps"
-                infoRefs.fpsAvg.Text=avg.." fps"
-                infoRefs.mem.Text=(function() local ok2,m=pcall(function() return ST:GetTotalMemoryUsageMb() end) return ok2 and m and math.floor(m).." MB" or "--" end)()
-                local u=math.floor(tick()-stT)
-                infoRefs.uptime.Text=string.format("%dm %ds",math.floor(u/60),u%60)
-                infoRefs.name.Text=pl.Name
-                local c=pl.Character
-                if c then
-                    local h=c:FindFirstChildOfClass("Humanoid")
-                    local hr=c:FindFirstChild("HumanoidRootPart")
-                    if h then infoRefs.hp.Text=math.floor(h.Health).." / "..math.floor(h.MaxHealth) end
-                    if hr then local p=hr.Position infoRefs.pos.Text=string.format("%d,%d,%d",math.floor(p.X),math.floor(p.Y),math.floor(p.Z)) end
-                end
-                infoRefs.game.Text=string.sub(game.Name or "?",1,24)
-                infoRefs.place.Text=tostring(game.PlaceId)
-                infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
-                infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v14-CHILL"
-                local a={}
-                if tg.espLine then table.insert(a,"LINE") end
-                if tg.espName then table.insert(a,"NAME") end
-                if tg.espHp then table.insert(a,"HP") end
-                if tg.espDist then table.insert(a,"DIST") end
-                if tg.espBody then table.insert(a,"BODY") end
-                if tg.noclip then table.insert(a,"NOCLIP") end
-                if tg.mapBright then table.insert(a,"BRIGHT") end
-                if tg.fps then table.insert(a,"FPS+") end
-                infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
-            end)
-        end
-    end
-end)
-
-switchTab("MOVE")
-
-local titleTarget="> ROOT@NEKO:~$ ./run.sh"
-local bootRunning=false
-local function bootSequence()
-    if bootRunning then return end
-    bootRunning=true
-    task.spawn(function()
-        title.Text=""
-        for i=1,#titleTarget do
-            title.Text=string.sub(titleTarget,1,i)
-            if i%2==1 then playKey("down",0.35,1+math.random()*0.25) end
-            task.wait(0.03)
-        end
-        bootRunning=false
-    end)
-    task.spawn(function()
-        for _,ln in ipairs({"> init kernel ... [OK]","> mount /dev/neko ... [OK]","> access granted"}) do
-            typeStatus(ln) task.wait(0.4)
-        end
-    end)
-end
-
-local menuOpen=false
-local function showMenu()
-    if menuOpen then return end
-    menuOpen=true
-    playSnd("open")
-    main.Visible=true
-    main.Size=UDim2.new(0,0,0,0) main.BackgroundTransparency=1
-    T:Create(main,TweenInfo.new(0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,470,0,380),BackgroundTransparency=0.05}):Play()
-    stk.Transparency=1
-    T:Create(stk,TweenInfo.new(0.25),{Transparency=0}):Play()
-    local basePos=main.Position
-    task.spawn(function() -- giật hình (glitch) lúc mở
-        for _=1,5 do
-            main.Position=UDim2.new(basePos.X.Scale,basePos.X.Offset+math.random(-5,5),basePos.Y.Scale,basePos.Y.Offset+math.random(-2,2))
-            task.wait(0.03)
-        end
-        main.Position=basePos
-    end)
-    bootSequence()
-end
-local function hideMenu()
-    if not menuOpen then return end
-    menuOpen=false
-    playSnd("click")
-    local tw=T:Create(main,TweenInfo.new(0.18,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Size=UDim2.new(0,0,0,0),BackgroundTransparency=1})
-    tw:Play()
-    tw.Completed:Connect(function() if not menuOpen then main.Visible=false end end)
-end
-cl.MouseButton1Click:Connect(hideMenu)
-
-task.spawn(function()
-    local tGlow=0 local tCursor=0
-    local nextGlitch=2 local glitchUntil=0
-    while true do
-        task.wait(0.06)
-        tGlow=tGlow+0.06 tCursor=tCursor+0.06
-        tglGlow.Transparency=0.7+math.abs(math.sin(tGlow*2))*0.2
-        stkGrad.Rotation=(tGlow*60)%360
-        if menuOpen then
-            stkGlow.Transparency=0.72+math.abs(math.sin(tGlow*1.5))*0.2
-            for _,c in ipairs(rainCols) do
-                c.offset=c.offset+c.speed*0.06
-                if c.offset>380 then
-                    c.offset=-380 c.lbl.Text=rainStr(26)
-                end
-                c.lbl.Position=UDim2.new(0,c.lbl.Position.X.Offset,0,c.offset)
-            end
-            for _,b in ipairs(brackets) do b.BackgroundTransparency=0.05+math.abs(math.sin(tGlow*3))*0.5 end
-            scan.Position=UDim2.new(0,0,0,((tGlow*90)%440)-30)
-            if tGlow>=nextGlitch then nextGlitch=tGlow+2.5+math.random()*3 glitchUntil=tGlow+0.18 end
-            if tGlow<glitchUntil then
-                title.TextColor3=(math.random()>0.5) and CY or RED
-                title.Position=UDim2.new(0,10+math.random(-3,3),0,math.random(-1,1))
-            else
-                title.TextColor3=G title.Position=UDim2.new(0,10,0,0)
-            end
-            if tCursor>=0.6 then tCursor=0 cursor.Visible=not cursor.Visible end
-        end
-    end
-end)
-
-local dragging=false local dragStart,dragStartPos local moved=false
-toggleBtn.InputBegan:Connect(function(i)
-    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-        dragging=true moved=false dragStart=i.Position dragStartPos=toggleBtn.Position
-    end
-end)
-UIS.InputChanged:Connect(function(i)
-    if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-        local d=i.Position-dragStart
-        if d.Magnitude>5 then moved=true end
-        toggleBtn.Position=UDim2.new(dragStartPos.X.Scale,dragStartPos.X.Offset+d.X,dragStartPos.Y.Scale,dragStartPos.Y.Offset+d.Y)
-    end
-end)
-UIS.InputEnded:Connect(function(i)
-    if (i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch) and dragging then
-        dragging=false
-        if not moved then if menuOpen then hideMenu() else showMenu() end end
-    end
-end)
-main.Position=toggleBtn.Position
-
-do -- kéo menu bằng thanh tiêu đề (chuột + cảm ứng)
-    local d2,ds2,sp2=false,nil,nil
-    hd.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-            d2=true ds2=i.Position sp2=main.Position
-        end
-    end)
-    UIS.InputChanged:Connect(function(i)
-        if d2 and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-            local d=i.Position-ds2
-            main.Position=UDim2.new(sp2.X.Scale,sp2.X.Offset+d.X,sp2.Y.Scale,sp2.Y.Offset+d.Y)
-        end
-    end)
-    UIS.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then d2=false end
-    end)
-end
-
-local rT=0
-local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
-local espFrame=0
-
-RS.RenderStepped:Connect(function(dt)
-    rT=tick() espFrame=espFrame+1 cam=workspace.CurrentCamera or cam
-    if fovCustom then cam.FieldOfView=fovCustom end
-    if tg.espLine and drawingAvailable then
-        local ct2=Vector2.new(cam.ViewportSize.X/2,0)
-        local rb=Color3.fromHSV(rT%4/4,1,1)
-        for _,p in ipairs(P:GetPlayers()) do
-            if p~=pl then
-                local ch=p.Character
-                local hr=ch and ch:FindFirstChild("HumanoidRootPart")
-                local h=ch and ch:FindFirstChildOfClass("Humanoid")
-                local tr=trcs[p]
-                if hr and h and h.Health>0 then
-                    if not tr then
-                        local okk,r=pcall(function() return Drawing.new("Line") end)
-                        if okk and r then r.Thickness=2 r.Transparency=1 trcs[p]=r tr=r end
-                    end
-                    if tr then
-                        local v,on2=cam:WorldToViewportPoint(hr.Position)
-                        if on2 then tr.From=ct2 tr.To=Vector2.new(v.X,v.Y) tr.Color=rb tr.Visible=true else tr.Visible=false end
-                    end
-                elseif tr then tr.Visible=false end
-            end
-        end
-    elseif not tg.espLine and next(trcs) then
-        for _,t2 in pairs(trcs) do pcall(function() t2:Remove() end) end
-        trcs={}
-    end
-
-    if tg.espName or tg.espHp or tg.espDist or tg.espBody then
-        local myChar=pl.Character
-        local myHR=myChar and myChar:FindFirstChild("HumanoidRootPart")
-        local myPos=myHR and myHR.Position
-        for char,data in pairs(evs) do
-            if not char.Parent then destroyESP(char)
-            else
-                local hr2=char:FindFirstChild("HumanoidRootPart")
-                local h2=char:FindFirstChildOfClass("Humanoid")
-                if hr2 and h2 then
-                    if tg.espDist and myPos then
-                        local d=(hr2.Position-myPos).Magnitude/3.57
-                        data.distLbl.Text=string.format("%.1fm",d)
-                    end
-                    if tg.espHp then
-                        local hp=math.clamp(h2.Health/math.max(h2.MaxHealth,1),0,1)
-                        data.hpFill.Size=UDim2.new(1,0,hp,0)
-                        if hp>0.6 then data.hpFill.BackgroundColor3=Color3.fromRGB(0,255,100)
-                        elseif hp>0.3 then data.hpFill.BackgroundColor3=YEL
-                        else data.hpFill.BackgroundColor3=RED end
-                    end
-                    if tg.espBody then
-                        data._mFrame=data._mFrame+1
-                        if data._mFrame>=20 or not data._mCache then data._mCache=measureBody(char) data._mFrame=0 end
-                        local m=data._mCache
-                        if m then
-                            data.fxBB.StudsOffset=Vector3.new(0,m.center,0)
-                            local dist=(cam.CFrame.Position-hr2.Position).Magnitude
-                            if dist>0.1 then
-                                local pxPerStud=cam.ViewportSize.Y/(2*dist*math.tan(math.rad(cam.FieldOfView/2)))
-                                data.fxBB.Size=UDim2.new(0,math.floor(m.width*pxPerStud),0,math.floor(m.height*pxPerStud))
-                            end
-                        end
-                        for _,s in ipairs(data.scans) do
-                            local y=((s.offset+rT*s.speed*s.dir)%1+1)%1
-                            s.obj.Position=UDim2.new(0,0,y,0)
-                        end
-                        for _,d in ipairs(data.dots) do
-                            d.y=d.y+rT*d.speed*d.dir*0.01
-                            if d.y>1.1 then d.y=-0.1 elseif d.y<-0.1 then d.y=1.1 end
-                            d.obj.Position=UDim2.new(d.x,0,d.y,0)
-                        end
-                        local ringT=(rT*0.6)%1
-                        data.ring.Size=UDim2.new(ringT,0,ringT,0)
-                        data.ringStroke.Transparency=ringT*0.9
-                        local hp2=math.floor(h2.Health/math.max(h2.MaxHealth,1)*100)
-                        data.dataTop.Text="HP:"..hp2.."%"
-                        if data.hl then data.hl.FillTransparency=0.85+math.abs(math.sin(rT*2.5))*0.05 end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- SPEED / JUMP (không đè WalkSpeed của game, không dùng BodyVelocity)
-local jpSaved=nil
-pl.CharacterAdded:Connect(function() jpSaved=nil end)
-RS.Heartbeat:Connect(function()
-    local c=pl.Character if not c then return end
-    local h=c:FindFirstChildOfClass("Humanoid")
-    local hr=c:FindFirstChild("HumanoidRootPart")
-    if not h or not hr or h.Health<=0 then return end
-    local oldBV=hr:FindFirstChild("NekoSpeed") if oldBV then oldBV:Destroy() end
-    if stt.ws>16 then
-        local md=h.MoveDirection
-        if md.Magnitude>0.1 then
-            local v=hr.AssemblyLinearVelocity
-            local hv=md.Unit*stt.ws
-            hr.AssemblyLinearVelocity=Vector3.new(hv.X,v.Y,hv.Z)
-        end
-    end
-    if stt.jp>50 then
-        if not jpSaved then jpSaved={use=h.UseJumpPower,power=h.JumpPower,height=h.JumpHeight} end
-        h.UseJumpPower=true h.JumpPower=stt.jp
-    elseif jpSaved then
-        h.UseJumpPower=jpSaved.use h.JumpPower=jpSaved.power h.JumpHeight=jpSaved.height jpSaved=nil
-    end
-end)
-
-UIS.JumpRequest:Connect(function()
-    if tg.infJump then
-        local c=pl.Character
-        local h=c and c:FindFirstChildOfClass("Humanoid")
-        if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
-    end
-end)
-
-for _,p in ipairs(P:GetPlayers()) do
-    if p~=pl and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then buildESP(p.Character) end
-end
-applyESPToggles()
-
-task.spawn(function()
-    while true do
-        task.wait(2)
-        pcall(function()
-            local f=math.floor(frmCnt/2)
-            fpsLbl.Text=f.." FPS"
-            frmCnt=0
-        end)
-    end
-end)
-
-P.PlayerRemoving:Connect(function(p)
-    if trcs[p] then pcall(function() trcs[p]:Remove() end) trcs[p]=nil end
-    if p.Character then destroyESP(p.Character) end
-    if tpSelected==p then tpSelected=nil tpTargetBtn.Text="  > SELECT PLAYER" end
-end)
-
-playSnd("open",1.2)
-print("[HACKER NEKO v14 CHILL] loaded")
-
-end)
-
-if not ok then
-    warn("[HACKER NEKO ERROR] "..tostring(err))
-    pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification",{
-            Title="HACKER NEKO ERROR", Text=tostring(err), Duration=15
-        })
-    end)
-end
+tpTargetBtn.MouseButton1Click:Connect(function() openTpPicker() end
