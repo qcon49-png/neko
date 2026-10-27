@@ -1,5 +1,5 @@
 -- ==================================================================
--- ================ NYT MODS V12 - AC + AIMBOT INTEGRATED ============
+-- ================ NYT MODS V24 - AC + AIM (FOV CENTER) ============
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -23,9 +23,7 @@ pcall(function() if gp:FindFirstChild("HackerNeko") then gp.HackerNeko:Destroy()
 local sg=Instance.new("ScreenGui") sg.Name="HackerNeko" sg.ResetOnSpawn=false
 sg.IgnoreGuiInset=true sg.DisplayOrder=9999 sg.Parent=gp
 
--- Sound (giữ ngắn)
 local SS=game:GetService("SoundService") local SND={on=true,vol=0.6}
-local function playKey() end
 local function playSnd(name)
     if not SND.on then return end
     pcall(function()
@@ -52,15 +50,12 @@ local spinAccum=0 local spinSavedAutoRotate=nil local autoFlySavedPlatform=nil
 local tpSelected=nil local teleportTo local fovCustom=nil
 local nlSafe=nil local nlGroundT=0
 
--- ===== AUTO CLICKER STATE =====
 local acS={on=false,cps=10,button="Left",mode="Toggle",humanize=false,limit=0,points={}}
 local acFrames,acStrokes,acLabels={},{},{}
 local acAcc,acIdx,acSession,acTotal=0,1,0,0
 local acStamps={} local acLastStat=0
 local MAX_PER_FRAME=30
-local acHitCounter=0 local acHitCounterTick=0
 
--- ===== AIMBOT STATE =====
 local aimS={on=true,teamCheck=false,aliveCheck=true,wallCheck=true,
     triggerKey="MouseButton2",toggleMode=false,lockPart="Head",maxDist=3000,
     fovEnabled=true,fovVisible=true,fovAmount=250,
@@ -68,13 +63,11 @@ local aimS={on=true,teamCheck=false,aliveCheck=true,wallCheck=true,
     fovTransparency=0.5,fovThickness=1.5}
 local aimRunning=false local aimLocked=nil local aimOriginalSens=nil
 local aimCircle=nil
-
 pcall(function()
     local okD,c=pcall(function() return Drawing.new("Circle") end)
     if okD and c then aimCircle=c end
 end)
 
--- Waypoints
 local hfa=(writefile~=nil) and (readfile~=nil) and (isfile~=nil)
 local WPF="NekoWPs_"..tostring(game.PlaceId)..".json"
 local ACF="NekoAC_"..tostring(game.PlaceId)..".json"
@@ -93,7 +86,6 @@ local function saveWPs() if not hfa then return end pcall(function()
     writefile(WPF,HS:JSONEncode({height=wpHeight,wps=out})) end) end
 local function cfFromArr(a) if not a then return nil end return CFrame.new(a[1],a[2],a[3],a[4],a[5],a[6],a[7],a[8],a[9],a[10],a[11],a[12]) end
 
--- Load AC config
 if hfa and isfile(ACF) then pcall(function()
     local d=HS:JSONDecode(readfile(ACF))
     if d then for k,v in pairs(d) do if k~="points" then acS[k]=v end end end
@@ -108,7 +100,6 @@ local function saveAC() if not hfa then return end pcall(function()
     writefile(ACF,HS:JSONEncode(acS))
 end) end
 
--- ===== UI BASE =====
 local toggleBtn=Instance.new("Frame",sg)
 toggleBtn.Size=UDim2.new(0,48,0,48) toggleBtn.Position=UDim2.new(0,30,0,120)
 toggleBtn.BackgroundColor3=BG toggleBtn.BackgroundTransparency=0.15
@@ -173,7 +164,6 @@ fpsLbl.Size=UDim2.new(0,80,1,0) fpsLbl.Position=UDim2.new(1,-88,0,0)
 fpsLbl.BackgroundTransparency=1 fpsLbl.Text="-- FPS" fpsLbl.Font=Enum.Font.Code
 fpsLbl.TextSize=11 fpsLbl.TextColor3=CY fpsLbl.TextXAlignment=Enum.TextXAlignment.Right fpsLbl.ZIndex=111
 
--- Dialog
 local dlgOverlay=Instance.new("Frame",sg)
 dlgOverlay.Size=UDim2.new(1,0,1,0) dlgOverlay.BackgroundColor3=Color3.new(0,0,0)
 dlgOverlay.BackgroundTransparency=.6 dlgOverlay.BorderSizePixel=0 dlgOverlay.Visible=false dlgOverlay.ZIndex=900
@@ -211,7 +201,6 @@ dlgOverlay.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then closeDlg() end
 end)
 
--- Tabs (giữ nguyên + thêm AIM)
 local tabs={"MOVE","ESP","PLAYER","TELE","AIM","INFO"}
 local TAB_SHAPE={MOVE="diamond",ESP="ring",PLAYER="circle",TELE="boxin",AIM="ring",INFO="square"}
 local pages={} local tabBtns={} local activeTab=nil
@@ -277,7 +266,6 @@ for i,n in ipairs(tabs) do
     tabBtns[n]={bg=b,txt=txt,setColor=setColor}
 end
 
--- UI helpers
 local function mkSec(parent,txt)
     local s=Instance.new("Frame",parent)
     s.Size=UDim2.new(1,-8,0,26) s.BackgroundTransparency=1
@@ -408,7 +396,6 @@ local function mkBtn(parent,name,cb)
     return b
 end
 
--- ==== AUTO CLICKER =====
 local function acDoClick()
     if #acFrames==0 then return end
     local f=acFrames[acIdx] acIdx=acIdx%#acFrames+1 if not f then return end
@@ -441,19 +428,11 @@ local function acDoClick()
     if clicked then
         acTotal=acTotal+1 acSession=acSession+1
         acStamps[#acStamps+1]=os.clock()
-        acHitCounter=acHitCounter+1
-        if f then
-            local stroke=f:FindFirstChildOfClass("Frame")
-            if stroke then
-                local ring=f:FindFirstChildWhichIsA("Frame")
-                if ring then
-                    local st=ring:FindFirstChildOfClass("UIStroke")
-                    if st then
-                        st.Transparency=0
-                        TweenService:Create(st,TweenInfo.new(0.2),{Transparency=0.4}):Play()
-                    end
-                end
-            end
+        local ring=f:FindFirstChildWhichIsA("Frame")
+        if ring then
+            local st=ring:FindFirstChildOfClass("UIStroke")
+            if st then st.Transparency=0
+                TweenService:Create(st,TweenInfo.new(0.2),{Transparency=0.4}):Play() end
         end
     end
 end
@@ -482,12 +461,10 @@ local function acAddPoint(cx,cy)
     num.Size=UDim2.new(0,20,0,12) num.Position=UDim2.new(1,0,0,-4)
     num.BackgroundTransparency=1 num.Text=tostring(#acFrames+1) num.Font=Enum.Font.Code
     num.TextSize=11 num.TextColor3=G num.TextStrokeTransparency=0.3 num.ZIndex=53
-    -- Draggable
     local drag,start,startPos=false,nil,nil
     f.InputBegan:Connect(function(i)
         if (i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch) and not acS.on then
-            drag=true start=i.Position startPos=f.Position
-        end
+            drag=true start=i.Position startPos=f.Position end
     end)
     UIS.InputChanged:Connect(function(i)
         if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
@@ -497,8 +474,7 @@ local function acAddPoint(cx,cy)
     end)
     UIS.InputEnded:Connect(function(i)
         if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-            if drag then drag=false pcall(saveAC) end
-        end
+            if drag then drag=false pcall(saveAC) end end
     end)
     table.insert(acFrames,f) table.insert(acStrokes,st) table.insert(acLabels,num)
 end
@@ -517,7 +493,6 @@ local function acSetRunning(v)
     if not v then saveAC() end
 end
 
--- ==== AIMBOT =====
 local function aimCancel()
     aimLocked=nil
     if aimCircle then pcall(function() aimCircle.Color=aimS.fovColor end) end
@@ -550,16 +525,18 @@ local function aimVisible(char,part)
     if res and res.Instance and res.Instance.CanCollide then return false end
     return true
 end
+-- FIX: Dùng tâm màn hình cố định thay vì vị trí chuột
 local function aimGetCandidates()
     local list={}
-    local mousePos=UIS:GetMouseLocation()
+    local vp=cam.ViewportSize
+    local center=Vector2.new(vp.X/2,vp.Y/2)
     local limit=aimS.fovEnabled and aimS.fovAmount or 99999
     for _,p in ipairs(P:GetPlayers()) do
         local valid,char,part=aimIsValid(p)
         if valid then
             local sp,onScreen=cam:WorldToViewportPoint(part.Position)
             if onScreen then
-                local d=(mousePos-Vector2.new(sp.X,sp.Y)).Magnitude
+                local d=(center-Vector2.new(sp.X,sp.Y)).Magnitude
                 if d<=limit and aimVisible(char,part) then
                     table.insert(list,{Player=p,Dist=d})
                 end
@@ -581,7 +558,6 @@ local function aimValidate()
     return true
 end
 
--- ==== INPUT HOOK FOR AIMBOT TRIGGER =====
 local typing=false
 UIS.TextBoxFocused:Connect(function() typing=true end)
 UIS.TextBoxFocusReleased:Connect(function() typing=false end)
@@ -598,9 +574,7 @@ UIS.InputBegan:Connect(function(inp)
         if aimS.toggleMode then
             aimRunning=not aimRunning
             if not aimRunning then aimCancel() end
-        else
-            aimRunning=true
-        end
+        else aimRunning=true end
     end
 end)
 UIS.InputEnded:Connect(function(inp)
@@ -616,12 +590,6 @@ UIS.InputEnded:Connect(function(inp)
     if match then aimRunning=false aimCancel() end
 end)
 
--- Fix exit sensitivity
-local function onExitFix()
-    aimCancel()
-end
-
--- ==== PERF / LIGHTING =====
 local BASE_LIGHTING={Brightness=L.Brightness,ClockTime=L.ClockTime,Ambient=L.Ambient,
     OutdoorAmbient=L.OutdoorAmbient,GlobalShadows=L.GlobalShadows,FogEnd=L.FogEnd,
     FogStart=L.FogStart,ExposureCompensation=L.ExposureCompensation}
@@ -716,7 +684,6 @@ task.spawn(function() while true do task.wait(0.5)
         L.GlobalShadows=false L.ExposureCompensation=0.5 end) end
 end end)
 
--- ==== TELEPORT =====
 teleportTo=function(targetPos,opts)
     opts=opts or {}
     local c=pl.Character if not c then return false end
@@ -731,7 +698,6 @@ teleportTo=function(targetPos,opts)
     return true
 end
 
--- ==== SPIN =====
 local function setSpinState(on)
     spinState.on=on
     local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid") if not h then return end
@@ -749,7 +715,6 @@ RS.Heartbeat:Connect(function(dt)
     hr.CFrame=CFrame.new(hr.Position)*CFrame.Angles(0,spinAccum,0)
 end)
 
--- ==== GHOST FEET ====
 RS.RenderStepped:Connect(function()
     if not ghostFeet.on or not ghostFeet.baseY or autoFlyState.on then return end
     local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart")
@@ -766,7 +731,6 @@ RS.RenderStepped:Connect(function()
     end
 end)
 
--- ==== AUTO FLY ====
 RS.Heartbeat:Connect(function(dt)
     if autoFlySavedPlatform~=nil and (not autoFlyState.on or not tpSelected or not tpSelected.Character) then
         local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid")
@@ -807,14 +771,12 @@ RS.Heartbeat:Connect(function(dt)
     myHR.AssemblyLinearVelocity=Vector3.zero myHR.AssemblyAngularVelocity=Vector3.zero
 end)
 
--- ==== NO FALL DAMAGE ====
 RS.Stepped:Connect(function()
     local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart") if not hr then return end
     local v=hr.AssemblyLinearVelocity
     if v.Y<-30 then hr.AssemblyLinearVelocity=Vector3.new(v.X,-30,v.Z) end
 end)
 
--- ==== GHOST DEATH ====
 RS.Heartbeat:Connect(function()
     if not ghostDeath.on then return end
     local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid") if not h then return end
@@ -826,7 +788,6 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- ==== NOCLIP ====
 local noclipSaved={} local nlSaved={} local nlRP=RaycastParams.new() nlRP.FilterType=Enum.RaycastFilterType.Exclude
 local function noclipApply(part)
     if not part:IsA("BasePart") then return end
@@ -870,7 +831,6 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- ==== ANTI-KB ====
 local akbConn=nil
 local function akbStates(on)
     local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid") if not h then return end
@@ -900,7 +860,6 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- ==== CHAR SPAWN ====
 local function onCharSpawn(char)
     local hr=char:WaitForChild("HumanoidRootPart",10)
     local h=char:WaitForChild("Humanoid",10)
@@ -939,7 +898,6 @@ end
 pl.CharacterAdded:Connect(onCharSpawn)
 if pl.Character then task.spawn(function() onCharSpawn(pl.Character) end) end
 
--- ==== ESP (giữ nguyên core) ====
 local evs={} local trcs={}
 local function measureBody(char)
     local hrp=char:FindFirstChild("HumanoidRootPart") local head=char:FindFirstChild("Head")
@@ -1004,11 +962,6 @@ local function scanESP()
 end
 task.spawn(function() while true do task.wait(1) scanESP() end end)
 
--- ================================================================
--- POPULATE UI
--- ================================================================
-
--- MOVE TAB
 mkSec(pages["MOVE"],"// SPEED")
 mkSli(pages["MOVE"],"Walk Speed",16,500,16,function(v) stt.ws=v end)
 mkSec(pages["MOVE"],"// JUMP")
@@ -1043,14 +996,12 @@ mkBtn(pages["MOVE"],"CLEAR ALL POINTS",function()
     acFrames,acStrokes,acLabels={},{},{} saveAC()
 end)
 
--- ESP TAB
 mkSec(pages["ESP"],"// PLAYER ESP")
 mkTog(pages["ESP"],"ESP NAME",false,function(on) tg.espName=on applyESPToggles() scanESP() end)
 mkTog(pages["ESP"],"ESP HEALTH",false,function(on) tg.espHp=on applyESPToggles() scanESP() end)
 mkTog(pages["ESP"],"ESP DISTANCE",false,function(on) tg.espDist=on applyESPToggles() scanESP() end)
 mkTog(pages["ESP"],"ESP BODY (Highlight)",false,function(on) tg.espBody=on applyESPToggles() scanESP() end)
 
--- PLAYER TAB
 mkSec(pages["PLAYER"],"// SPIN")
 mkTog(pages["PLAYER"],"SPIN",false,function(on) setSpinState(on) end)
 mkSli(pages["PLAYER"],"Spin Speed",1,20,5,function(v) spinState.speed=v end)
@@ -1094,7 +1045,6 @@ mkBtn(pages["PLAYER"],"REJOIN",function()
     end)
 end)
 
--- TELE TAB
 mkSec(pages["TELE"],"// TELEPORT")
 local tpTargetBtn=mkBtn(pages["TELE"],"SELECT PLAYER",function()
     dlgTitle.Text="> SELECT PLAYER"
@@ -1141,15 +1091,13 @@ for i=1,8 do
     end)
     mini(-68,"GO",CY,function()
         if wps[i] then local sc=cfFromArr(wps[i])
-            if sc then teleportTo(sc.Position+Vector3.new(0,wpHeight,0),{cframe=sc+Vector3.new(0,wpHeight,0)}) end
-        end
+            if sc then teleportTo(sc.Position+Vector3.new(0,wpHeight,0),{cframe=sc+Vector3.new(0,wpHeight,0)}) end end
     end)
     mini(-34,"X",RED,function() wps[i]=nil saveWPs() info.Text="#"..i.." EMPTY" info.TextColor3=DIM end)
     if wps[i] then info.Text="#"..i.." READY" info.TextColor3=G end
 end
 
--- AIM TAB (mới)
-mkSec(pages["AIM"],"// AIMBOT")
+mkSec(pages["AIM"],"// AIMBOT (FOV CENTER)")
 mkTog(pages["AIM"],"AIMBOT ENABLED",true,function(on) aimS.on=on end)
 mkTog(pages["AIM"],"TOGGLE MODE",false,function(on) aimS.toggleMode=on end)
 mkTog(pages["AIM"],"TEAM CHECK",false,function(on) aimS.teamCheck=on end)
@@ -1168,7 +1116,6 @@ end)
 mkSli(pages["AIM"],"FOV Radius",50,800,250,function(v) aimS.fovAmount=v if aimCircle then aimCircle.Radius=v end end)
 mkSli(pages["AIM"],"FOV Thickness",1,5,1.5,function(v) aimS.fovThickness=v end)
 
--- INFO TAB
 local infoRefs={}
 local infoRoot=Instance.new("Frame",pages["INFO"])
 infoRoot.Size=UDim2.new(1,-8,0,0) infoRoot.AutomaticSize=Enum.AutomaticSize.Y
@@ -1242,7 +1189,7 @@ task.spawn(function() while true do task.wait(2)
             end
             infoRefs.game.Text=string.sub(game.Name or "?",1,20)
             infoRefs.players.Text=#P:GetPlayers().."/"..P.MaxPlayers
-            infoRefs.ver.Text="v23-AC+AIM"
+            infoRefs.ver.Text="v24-FOVCENTER"
             local a={}
             if acS.on then table.insert(a,"AC") end
             if aimRunning then table.insert(a,"AIM") end
@@ -1255,7 +1202,6 @@ task.spawn(function() while true do task.wait(2)
     end
 end end)
 
--- ==== MENU SHOW/HIDE ====
 local menuOpen=false
 local function showMenu()
     if menuOpen then return end
@@ -1275,7 +1221,6 @@ local function hideMenu()
 end
 cl.MouseButton1Click:Connect(hideMenu)
 
--- Toggle button drag
 local dragging=false local dragStart,dragStartPos local moved=false
 toggleBtn.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
@@ -1297,7 +1242,6 @@ UIS.InputEnded:Connect(function(i)
 end)
 main.Position=toggleBtn.Position
 
--- Menu header drag
 do local d2,ds2,sp2=false,nil,nil
     hd.InputBegan:Connect(function(i)
         if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
@@ -1314,13 +1258,11 @@ do local d2,ds2,sp2=false,nil,nil
     end)
 end
 
--- ==== MAIN LOOPS ====
 local rT=0
 RS.RenderStepped:Connect(function(dt)
     rT=tick() cam=workspace.CurrentCamera or cam
     if fovCustom then cam.FieldOfView=fovCustom end
 
-    -- AUTO CLICKER click loop
     if acS.on and acS.cps>0 then
         acAcc=acAcc+acS.cps*dt
         local n=math.floor(acAcc) acAcc=acAcc-n
@@ -1328,14 +1270,12 @@ RS.RenderStepped:Connect(function(dt)
         for _=1,n do acDoClick() end
     end
 
-    -- AC stats
     local now=os.clock()
     if now-acLastStat>0.25 then
         acLastStat=now
         while acStamps[1] and now-acStamps[1]>1 do table.remove(acStamps,1) end
     end
 
-    -- AIMBOT loop
     if aimS.on and aimRunning and aimCircle then
         if not aimLocked then aimAcquire() else aimValidate() end
         if aimLocked then
@@ -1349,7 +1289,7 @@ RS.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- FOV circle position
+    -- FIX: FOV circle ghim ở tâm màn hình
     if aimCircle and aimS.on then
         aimCircle.Radius=aimS.fovAmount
         aimCircle.Thickness=aimS.fovThickness
@@ -1358,14 +1298,13 @@ RS.RenderStepped:Connect(function(dt)
         aimCircle.NumSides=60
         aimCircle.Filled=false
         aimCircle.Visible=aimS.fovVisible
-        local m=UIS:GetMouseLocation()
-        aimCircle.Position=Vector2.new(m.X,m.Y)
+        local vp=cam.ViewportSize
+        aimCircle.Position=Vector2.new(vp.X/2,vp.Y/2)
         if aimOriginalSens==nil then aimOriginalSens=UIS.MouseDeltaSensitivity end
     elseif aimCircle then
         aimCircle.Visible=false
     end
 
-    -- ESP update
     if tg.espName or tg.espHp or tg.espDist or tg.espBody then
         local myChar=pl.Character local myHR=myChar and myChar:FindFirstChild("HumanoidRootPart")
         local myPos=myHR and myHR.Position
@@ -1388,13 +1327,11 @@ RS.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- Crosshair glow khi ON
     if acS.on then
         for _,st in ipairs(acStrokes) do st.Transparency=0.1+math.abs(math.sin(rT*4))*0.35 end
     end
 end)
 
--- Speed/Jump
 local jpSaved=nil
 pl.CharacterAdded:Connect(function() jpSaved=nil end)
 RS.Heartbeat:Connect(function()
@@ -1422,13 +1359,11 @@ UIS.JumpRequest:Connect(function()
     end
 end)
 
--- Initial ESP
 for _,p in ipairs(P:GetPlayers()) do
     if p~=pl and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then buildESP(p.Character) end
 end
 applyESPToggles()
 
--- Load AC points
 local vp=workspace.CurrentCamera.ViewportSize
 if type(acS.points)=="table" and #acS.points>0 then
     for _,p in ipairs(acS.points) do
@@ -1437,7 +1372,6 @@ if type(acS.points)=="table" and #acS.points>0 then
 end
 if #acFrames==0 then acAddPoint(vp.X/2,vp.Y/2) end
 
--- FPS counter
 task.spawn(function() while true do task.wait(2)
     pcall(function() fpsLbl.Text=math.floor(frmCnt/2).." FPS" frmCnt=0 end)
 end end)
@@ -1450,7 +1384,7 @@ end)
 
 switchTab("MOVE")
 playSnd("open")
-print("[NYT v23] loaded - AC tab MOVE, AIMBOT tab AIM")
+print("[NYT v24] loaded - FOV circle ghim giua man hinh, uu tien target gan tam")
 
 end)
 
