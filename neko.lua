@@ -1,5 +1,5 @@
 -- ==================================================================
--- ========================= NYT MODS V8 =============================
+-- ========================= NYT MODS V11 ============================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -11,6 +11,7 @@ local L=game:GetService("Lighting")
 local TS=game:GetService("TeleportService")
 local ST=game:GetService("Stats")
 local HS=game:GetService("HttpService")
+local GuiService=game:GetService("GuiService")
 local pl=P.LocalPlayer
 local cam=workspace.CurrentCamera
 
@@ -40,26 +41,15 @@ local FALLBACK={down="rbxasset://sounds/clickfast.wav",up="rbxasset://sounds/cli
 local function buildWav(kind,seed)
     local rate=22050
     local dur=(kind=="down" and 0.09) or (kind=="up" and 0.055) or 0.14
-    local n=math.floor(rate*dur)
-    local rng=Random.new(seed)
+    local n=math.floor(rate*dur) local rng=Random.new(seed)
     local f1=(kind=="space") and rng:NextNumber(110,135) or rng:NextNumber(170,215)
-    local f2=f1*2.3
-    local prev=0
-    local out={}
+    local f2=f1*2.3 local prev=0 local out={}
     for i=0,n-1 do
-        local t=i/rate
-        local nz=rng:NextNumber(-1,1)
-        local hp=nz-prev prev=nz
-        local v
-        if kind=="down" then
-            v=hp*math.exp(-t*110)*0.55+math.sin(2*math.pi*f1*t)*math.exp(-t*48)*0.55+math.sin(2*math.pi*f2*t)*math.exp(-t*80)*0.2
-        elseif kind=="up" then
-            v=hp*math.exp(-t*170)*0.35+math.sin(2*math.pi*(f1*2.2)*t)*math.exp(-t*110)*0.18
-        else
-            v=hp*math.exp(-t*80)*0.45+math.sin(2*math.pi*f1*t)*math.exp(-t*26)*0.8+math.sin(2*math.pi*f2*t)*math.exp(-t*60)*0.25
-        end
-        if i<24 then v=v*(i/24) end
-        v=math.clamp(v,-1,1)
+        local t=i/rate local nz=rng:NextNumber(-1,1) local hp=nz-prev prev=nz local v
+        if kind=="down" then v=hp*math.exp(-t*110)*0.55+math.sin(2*math.pi*f1*t)*math.exp(-t*48)*0.55+math.sin(2*math.pi*f2*t)*math.exp(-t*80)*0.2
+        elseif kind=="up" then v=hp*math.exp(-t*170)*0.35+math.sin(2*math.pi*(f1*2.2)*t)*math.exp(-t*110)*0.18
+        else v=hp*math.exp(-t*80)*0.45+math.sin(2*math.pi*f1*t)*math.exp(-t*26)*0.8+math.sin(2*math.pi*f2*t)*math.exp(-t*60)*0.25 end
+        if i<24 then v=v*(i/24) end v=math.clamp(v,-1,1)
         out[#out+1]=string.pack("<i2",math.floor(v*30000))
     end
     local data=table.concat(out)
@@ -117,21 +107,21 @@ local epf=Instance.new("Folder",ef) epf.Name="Players"
 local stt={ws=16,jp=50}
 local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
     noclip=false,mapBright=false,fps=false,infJump=false,antiKB=true}
-local ghostDeath={on=false}
 
 local spinState={on=false,speed=5}
 local autoFlyState={on=false,stiffness=50}
-local autoHeal={on=true}
+local autoClick={on=false,cps=10}
 local ghostFeet={on=false,height=0,baseY=nil}
-local AUTOHEAL_MIN_MAX=10000
+local ghostDeath={on=false}
 local spinAccum=0
 local spinSavedAutoRotate=nil
 local autoFlySavedPlatform=nil
 local tpSelected=nil
-local lastKnockTick=0
+local acAcc=0
 local teleportTo
 local fovCustom=nil
 local nlSafe=nil local nlGroundT=0
+local guiInset=GuiService:GetGuiInset()
 
 local hfa=(writefile~=nil) and (readfile~=nil) and (isfile~=nil)
 local WPF="NekoWPs_"..tostring(game.PlaceId)..".json"
@@ -157,11 +147,90 @@ local function saveWPs()
         writefile(WPF,HS:JSONEncode({height=wpHeight,wps=out}))
     end)
 end
-local function cfFromArr(arr)
-    if not arr then return nil end
-    return CFrame.new(arr[1],arr[2],arr[3],arr[4],arr[5],arr[6],arr[7],arr[8],arr[9],arr[10],arr[11],arr[12])
-end
+local function cfFromArr(arr) if not arr then return nil end return CFrame.new(arr[1],arr[2],arr[3],arr[4],arr[5],arr[6],arr[7],arr[8],arr[9],arr[10],arr[11],arr[12]) end
 
+-- ===== CROSSHAIR AUTO CLICK =====
+local crosshair=Instance.new("Frame",sg)
+crosshair.Size=UDim2.new(0,50,0,50)
+crosshair.Position=UDim2.new(0.5,-25,0.5,-25)
+crosshair.BackgroundTransparency=1
+crosshair.BorderSizePixel=0
+crosshair.Visible=false
+crosshair.ZIndex=50
+crosshair.Active=true
+
+local chV=Instance.new("Frame",crosshair)
+chV.Size=UDim2.new(0,2,1,0) chV.Position=UDim2.new(0.5,-1,0,0)
+chV.BackgroundColor3=G chV.BackgroundTransparency=0.15
+chV.BorderSizePixel=0 chV.ZIndex=51
+
+local chH=Instance.new("Frame",crosshair)
+chH.Size=UDim2.new(1,0,0,2) chH.Position=UDim2.new(0,0,0.5,-1)
+chH.BackgroundColor3=G chH.BackgroundTransparency=0.15
+chH.BorderSizePixel=0 chH.ZIndex=51
+
+local chRing=Instance.new("Frame",crosshair)
+chRing.Size=UDim2.new(0,22,0,22) chRing.Position=UDim2.new(0.5,-11,0.5,-11)
+chRing.BackgroundTransparency=1 chRing.BorderSizePixel=0 chRing.ZIndex=52
+local chRingStk=Instance.new("UIStroke",chRing)
+chRingStk.Color=G chRingStk.Thickness=2 chRingStk.Transparency=0.3
+Instance.new("UICorner",chRing).CornerRadius=UDim.new(1,0)
+
+local chDot=Instance.new("Frame",crosshair)
+chDot.Size=UDim2.new(0,6,0,6) chDot.Position=UDim2.new(0.5,-3,0.5,-3)
+chDot.BackgroundColor3=G chDot.BorderSizePixel=0 chDot.ZIndex=52
+Instance.new("UICorner",chDot).CornerRadius=UDim.new(1,0)
+
+local chLbl=Instance.new("TextLabel",crosshair)
+chLbl.Size=UDim2.new(0,120,0,14) chLbl.Position=UDim2.new(0.5,-60,1,2)
+chLbl.BackgroundTransparency=1
+chLbl.Text="AC: 10cps"
+chLbl.Font=Enum.Font.Code chLbl.TextSize=11 chLbl.TextColor3=G
+chLbl.TextStrokeTransparency=0.3 chLbl.TextStrokeColor3=Color3.new(0,0,0)
+chLbl.ZIndex=52
+
+local chDrag,chStart,chStartPos=false,nil,nil
+crosshair.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+        chDrag=true chStart=i.Position chStartPos=crosshair.Position
+    end
+end)
+UIS.InputChanged:Connect(function(i)
+    if chDrag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+        local d=i.Position-chStart
+        crosshair.Position=UDim2.new(chStartPos.X.Scale,chStartPos.X.Offset+d.X,chStartPos.Y.Scale,chStartPos.Y.Offset+d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+        chDrag=false
+    end
+end)
+
+local function doAutoClick()
+    if not autoClick.on or autoClick.cps<=0 then return end
+    local crossPos=crosshair.AbsolutePosition+crosshair.AbsoluteSize/2
+    local clickPos=Vector2.new(crossPos.X,crossPos.Y+guiInset.Y)
+    local vu=game:GetService("VirtualUser")
+    if vu then
+        pcall(function() vu:ClickButton1(clickPos) end)
+    elseif type(mousemoveabs)=="function" then
+        pcall(function() mousemoveabs(clickPos.X,clickPos.Y) end)
+        if type(mouse1click)=="function" then pcall(mouse1click) end
+    elseif type(mouse1click)=="function" then
+        pcall(mouse1click)
+    end
+end
+RS.Heartbeat:Connect(function(dt)
+    if not autoClick.on or autoClick.cps<=0 then return end
+    acAcc=acAcc+autoClick.cps*dt
+    local n=math.floor(acAcc) acAcc=acAcc-n
+    if n<=0 then return end
+    if n>80 then n=80 end
+    for i=1,n do doAutoClick() end
+end)
+
+-- ===== MAIN UI =====
 local toggleBtn=Instance.new("Frame",sg)
 toggleBtn.Size=UDim2.new(0,48,0,48) toggleBtn.Position=UDim2.new(0,30,0,120)
 toggleBtn.BackgroundColor3=BG toggleBtn.BackgroundTransparency=0.15
@@ -189,8 +258,7 @@ stkGrad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,G),ColorSequenceKey
 
 local brackets={}
 local function corner(ax,ay)
-    local ox=(ax==0) and -3 or 3
-    local oy=(ay==0) and -3 or 3
+    local ox=(ax==0) and -3 or 3 local oy=(ay==0) and -3 or 3
     local hz=Instance.new("Frame",main)
     hz.Size=UDim2.new(0,18,0,2) hz.AnchorPoint=Vector2.new(ax,ay) hz.Position=UDim2.new(ax,ox,ay,oy)
     hz.BackgroundColor3=CY hz.BorderSizePixel=0 hz.ZIndex=130
@@ -271,27 +339,17 @@ local stBar=Instance.new("Frame",main)
 stBar.Size=UDim2.new(1,0,0,22) stBar.Position=UDim2.new(0,0,1,-22)
 stBar.BackgroundColor3=BG2 stBar.BorderSizePixel=0 stBar.ZIndex=110
 Instance.new("UICorner",stBar).CornerRadius=UDim.new(0,4)
+
 local stLbl=Instance.new("TextLabel",stBar)
-stLbl.Size=UDim2.new(1,-180,1,0) stLbl.Position=UDim2.new(0,8,0,0)
+stLbl.Size=UDim2.new(1,-100,1,0) stLbl.Position=UDim2.new(0,8,0,0)
 stLbl.BackgroundTransparency=1 stLbl.Text="[ OK ] ready"
 stLbl.Font=Enum.Font.Code stLbl.TextSize=11 stLbl.TextColor3=G
 stLbl.TextXAlignment=Enum.TextXAlignment.Left stLbl.ZIndex=111
+
 local fpsLbl=Instance.new("TextLabel",stBar)
 fpsLbl.Size=UDim2.new(0,80,1,0) fpsLbl.Position=UDim2.new(1,-88,0,0)
 fpsLbl.BackgroundTransparency=1 fpsLbl.Text="-- FPS" fpsLbl.Font=Enum.Font.Code
 fpsLbl.TextSize=11 fpsLbl.TextColor3=CY fpsLbl.TextXAlignment=Enum.TextXAlignment.Right fpsLbl.ZIndex=111
-
-local ahBtn=Instance.new("TextButton",stBar)
-ahBtn.Size=UDim2.new(0,44,1,0) ahBtn.Position=UDim2.new(1,-172,0,0)
-ahBtn.BackgroundTransparency=1 ahBtn.Text="♥AH" ahBtn.Font=Enum.Font.Code
-ahBtn.TextSize=11 ahBtn.TextColor3=RED ahBtn.AutoButtonColor=false ahBtn.Visible=true ahBtn.ZIndex=111
-ahBtn.MouseButton1Click:Connect(function()
-    autoHeal.on=not autoHeal.on
-    ahBtn.TextColor3=autoHeal.on and RED or DIM
-    stLbl.Text=autoHeal.on and "[ OK ] Auto Heal ON (background)" or "[ OFF ] Auto Heal"
-    stLbl.TextColor3=autoHeal.on and G or DIM
-    playSnd(autoHeal.on and "on" or "off")
-end)
 
 local dlgOverlay=Instance.new("Frame",sg)
 dlgOverlay.Size=UDim2.new(1,0,1,0) dlgOverlay.BackgroundColor3=Color3.new(0,0,0)
@@ -687,11 +745,7 @@ teleportTo=function(targetPos,opts)
     local c=pl.Character if not c then return false end
     local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return false end
     local cf=opts.cframe or (CFrame.new(targetPos)*(hr.CFrame-hr.CFrame.Position))
-    local function snap()
-        hr.CFrame=cf
-        hr.AssemblyLinearVelocity=Vector3.zero
-        hr.AssemblyAngularVelocity=Vector3.zero
-    end
+    local function snap() hr.CFrame=cf hr.AssemblyLinearVelocity=Vector3.zero hr.AssemblyAngularVelocity=Vector3.zero end
     snap()
     task.spawn(function()
         for _=1,4 do
@@ -706,9 +760,7 @@ end
 
 local function setSpinState(on)
     spinState.on=on
-    local c=pl.Character
-    local h=c and c:FindFirstChildOfClass("Humanoid")
-    if not h then return end
+    local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid") if not h then return end
     if on then
         if spinSavedAutoRotate==nil then spinSavedAutoRotate=h.AutoRotate end
         pcall(function() h.AutoRotate=false end)
@@ -719,47 +771,12 @@ end
 RS.Heartbeat:Connect(function(dt)
     if not spinState.on then return end
     if autoFlyState.on then return end
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart")
-    if not hr then return end
+    local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart") if not hr then return end
     spinAccum=(spinAccum+math.rad(spinState.speed*360)*dt)%(math.pi*2)
     hr.CFrame=CFrame.new(hr.Position)*CFrame.Angles(0,spinAccum,0)
 end)
-RS.Heartbeat:Connect(function()
-    if not spinState.on then return end
-    if tick()-lastKnockTick<0.05 then return end
-    lastKnockTick=tick()
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart")
-    if not hr then return end
-    local myPos=hr.Position
-    for _,p in ipairs(P:GetPlayers()) do
-        if p~=pl then
-            local ch=p.Character
-            local hr2=ch and ch:FindFirstChild("HumanoidRootPart")
-            if hr2 then
-                local diff=hr2.Position-myPos
-                local d=diff.Magnitude
-                if d>0.5 and d<15 then
-                    local dir=diff
-                    if dir.Magnitude<0.5 then dir=Vector3.new(math.random(-1,1),0,math.random(-1,1)) end
-                    dir=dir.Unit
-                    local vel=dir*(90+math.random()*50)+Vector3.new(0,55,0)
-                    pcall(function() hr2:SetNetworkOwner(pl) end)
-                    task.defer(function()
-                        pcall(function() hr2.AssemblyLinearVelocity=vel end)
-                        pcall(function() hr2.Velocity=vel end)
-                        pcall(function() hr2:ApplyImpulse(vel*hr2:GetMass()) end)
-                        pcall(function() hr2.AssemblyAngularVelocity=Vector3.new(math.random(-40,40),math.random(-40,40),math.random(-40,40)) end)
-                    end)
-                    task.delay(0.4,function() pcall(function() hr2:SetNetworkOwnershipAuto() end) end)
-                end
-            end
-        end
-    end
-end)
 
-RS.Heartbeat:Connect(function()
+RS.RenderStepped:Connect(function()
     if not ghostFeet.on or not ghostFeet.baseY then return end
     if autoFlyState.on then return end
     local c=pl.Character
@@ -769,15 +786,13 @@ RS.Heartbeat:Connect(function()
     local minY=ghostFeet.baseY+ghostFeet.height
     local floor=workspace.FallenPartsDestroyHeight+50
     if minY<floor then minY=floor end
-    local dy=minY-hr.Position.Y
-    if dy>0.1 then
-        if dy>2 then
-            hr.CFrame=CFrame.new(hr.Position.X,minY,hr.Position.Z)*(hr.CFrame-hr.CFrame.Position)
-            hr.AssemblyLinearVelocity=Vector3.new(hr.AssemblyLinearVelocity.X,0,hr.AssemblyLinearVelocity.Z)
-        else
-            local vel=hr.AssemblyLinearVelocity
-            hr.AssemblyLinearVelocity=Vector3.new(vel.X,dy*25+5,vel.Z)
-        end
+    local y=hr.Position.Y local v=hr.AssemblyLinearVelocity
+    if y<minY then
+        local rotY=select(2,hr.CFrame:ToEulerAnglesYXZ())
+        hr.CFrame=CFrame.new(hr.Position.X,minY,hr.Position.Z)*CFrame.Angles(0,rotY,0)
+        hr.AssemblyLinearVelocity=Vector3.new(v.X,0,v.Z)
+    elseif y<minY+4 and v.Y<-1 then
+        hr.AssemblyLinearVelocity=Vector3.new(v.X,0,v.Z)
     end
 end)
 
@@ -793,37 +808,14 @@ RS.Heartbeat:Connect(function(dt)
         end
         autoFlySavedPlatform=nil
         if hr and h then
-            local rp=RaycastParams.new()
-            rp.FilterType=Enum.RaycastFilterType.Exclude
-            rp.FilterDescendantsInstances={c}
+            local rp=RaycastParams.new() rp.FilterType=Enum.RaycastFilterType.Exclude rp.FilterDescendantsInstances={c}
             local ray=workspace:Raycast(hr.Position,Vector3.new(0,-300,0),rp)
-            local targetY
-            if ray then targetY=ray.Position.Y+3.5 else targetY=hr.Position.Y+15 end
+            local targetY=ray and ray.Position.Y+3.5 or hr.Position.Y+15
             local rotY=select(2,hr.CFrame:ToEulerAnglesYXZ())
             hr.CFrame=CFrame.new(hr.Position.X,targetY,hr.Position.Z)*CFrame.Angles(0,rotY,0)
-            hr.AssemblyLinearVelocity=Vector3.zero
-            hr.AssemblyAngularVelocity=Vector3.zero
+            hr.AssemblyLinearVelocity=Vector3.zero hr.AssemblyAngularVelocity=Vector3.zero
             pcall(function() h:ChangeState(Enum.HumanoidStateType.GetUp) end)
             task.defer(function() pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end) end)
-            task.delay(0.3,function()
-                if not pl.Character then return end
-                local c2=pl.Character
-                local h2=c2:FindFirstChildOfClass("Humanoid")
-                local hr2=c2:FindFirstChild("HumanoidRootPart")
-                if not (h2 and hr2 and h2.Health>0) then return end
-                local op=OverlapParams.new()
-                op.FilterType=Enum.RaycastFilterType.Exclude
-                op.FilterDescendantsInstances={c2}
-                local parts=workspace:GetPartBoundsInBox(hr2.CFrame,Vector3.new(1.4,3.6,1.4),op)
-                for _,p in ipairs(parts) do
-                    if p.CanCollide then
-                        hr2.CFrame=hr2.CFrame+Vector3.new(0,8,0)
-                        hr2.AssemblyLinearVelocity=Vector3.zero
-                        pcall(function() h2:ChangeState(Enum.HumanoidStateType.GetUp) end)
-                        break
-                    end
-                end
-            end)
         end
         if autoFlyState.on then autoFlyState.on=false end
         return
@@ -858,50 +850,22 @@ RS.Heartbeat:Connect(function(dt)
     myHR.AssemblyAngularVelocity=Vector3.zero
 end)
 
--- AUTO HEAL (3 hook)
-local function forceHeal(h)
-    if not autoHeal.on or not h or not h.Parent then return end
-    if h.MaxHealth<AUTOHEAL_MIN_MAX then pcall(function() h.MaxHealth=AUTOHEAL_MIN_MAX end) end
-    if h.Health<h.MaxHealth then pcall(function() h.Health=h.MaxHealth end) end
-end
 RS.Stepped:Connect(function()
-    local c=pl.Character
-    forceHeal(c and c:FindFirstChildOfClass("Humanoid"))
-end)
-RS.Heartbeat:Connect(function()
-    local c=pl.Character
-    forceHeal(c and c:FindFirstChildOfClass("Humanoid"))
-end)
-RS.RenderStepped:Connect(function()
-    local c=pl.Character
-    forceHeal(c and c:FindFirstChildOfClass("Humanoid"))
-end)
--- NO FALL DAMAGE ẨN: cap velocity rơi
-RS.Stepped:Connect(function()
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart")
-    if not hr then return end
+    local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart") if not hr then return end
     local v=hr.AssemblyLinearVelocity
     if v.Y<-30 then hr.AssemblyLinearVelocity=Vector3.new(v.X,-30,v.Z) end
 end)
--- GHOST DEATH heartbeat cứu hộ
+
 RS.Heartbeat:Connect(function()
     if not ghostDeath.on then return end
-    local c=pl.Character
-    local h=c and c:FindFirstChildOfClass("Humanoid")
-    if not h then return end
-    if h.Health<=0 then
-        pcall(function() h.Health=1 end)
-        pcall(function() h:ChangeState(Enum.HumanoidStateType.GetUp) end)
-        task.defer(function()
-            if h and h.Parent then pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end) end
-        end)
-    elseif h.Health<1 then
-        pcall(function() h.Health=1 end)
-    end
+    local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid") if not h then return end
+    pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Dead,false) end)
+    if h.MaxHealth~=100 then pcall(function() h.MaxHealth=100 end) end
+    if h.Health~=0 then pcall(function() h.Health=0 end) end
+    local st=h:GetState()
+    if st==Enum.HumanoidStateType.Dead then pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end) end
 end)
 
--- NOCLIP
 local setNoclip
 local noclipSaved={}
 local nlSaved={}
@@ -936,16 +900,12 @@ local function nlHumanoid(on)
     end
 end
 setNoclip=function(on)
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart")
+    local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart")
     if on then
         if hr then nlSafe=hr.CFrame nlGroundT=tick() end
         nlHumanoid(true)
     else
-        if hr and inWall(hr,c) then
-            hr.CFrame=(nlSafe or hr.CFrame)+Vector3.new(0,3,0)
-            hr.AssemblyLinearVelocity=Vector3.zero
-        end
+        if hr and inWall(hr,c) then hr.CFrame=(nlSafe or hr.CFrame)+Vector3.new(0,3,0) hr.AssemblyLinearVelocity=Vector3.zero end
         restoreCollide()
         nlHumanoid(false)
     end
@@ -953,35 +913,25 @@ end
 RS.Stepped:Connect(function()
     if not tg.noclip then return end
     local c=pl.Character if not c then return end
-    for _,p in ipairs(c:GetDescendants()) do
-        if p:IsA("BasePart") then noclipApply(p) end
-    end
+    for _,p in ipairs(c:GetDescendants()) do if p:IsA("BasePart") then noclipApply(p) end end
 end)
 RS.Heartbeat:Connect(function()
     if not tg.noclip then return end
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart")
-    local h=c and c:FindFirstChildOfClass("Humanoid")
+    local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart") local h=c and c:FindFirstChildOfClass("Humanoid")
     if not hr or not h or h.Health<=0 then return end
     local now=tick()
     if h.FloorMaterial~=Enum.Material.Air then nlSafe=hr.CFrame nlGroundT=now return end
     if not nlSafe then return end
-    local y=hr.Position.Y
-    local rescue=false
+    local y=hr.Position.Y local rescue=false
     if y<workspace.FallenPartsDestroyHeight+40 then rescue=true
     elseif now-nlGroundT<1.5 and y<nlSafe.Position.Y-3 then
         nlRP.FilterDescendantsInstances={c}
         local r=workspace:Raycast(hr.Position,Vector3.new(0,15,0),nlRP)
         if r and r.Instance.CanCollide then rescue=true end
     end
-    if rescue then
-        hr.CFrame=nlSafe+Vector3.new(0,3,0)
-        hr.AssemblyLinearVelocity=Vector3.zero hr.AssemblyAngularVelocity=Vector3.zero
-        nlGroundT=now
-    end
+    if rescue then hr.CFrame=nlSafe+Vector3.new(0,3,0) hr.AssemblyLinearVelocity=Vector3.zero hr.AssemblyAngularVelocity=Vector3.zero nlGroundT=now end
 end)
 
--- ANTI-KB
 local MOVERS={BodyVelocity=true,BodyForce=true,BodyThrust=true,BodyPosition=true,BodyAngularVelocity=true,
     BodyGyro=true,LinearVelocity=true,VectorForce=true,AngularVelocity=true,Torque=true}
 local akbConn=nil
@@ -994,17 +944,13 @@ end
 local function akbHook(char)
     if akbConn then akbConn:Disconnect() akbConn=nil end
     akbConn=char.DescendantAdded:Connect(function(d)
-        if tg.antiKB and MOVERS[d.ClassName] then
-            task.defer(function() pcall(function() d:Destroy() end) end)
-        end
+        if tg.antiKB and MOVERS[d.ClassName] then task.defer(function() pcall(function() d:Destroy() end) end) end
     end)
     akbStates(tg.antiKB)
 end
 RS.Heartbeat:Connect(function()
     if not tg.antiKB then return end
-    local c=pl.Character
-    local h=c and c:FindFirstChildOfClass("Humanoid")
-    local hr=c and c:FindFirstChild("HumanoidRootPart")
+    local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid") local hr=c and c:FindFirstChild("HumanoidRootPart")
     if not h or not hr or h.Health<=0 then return end
     local st=h:GetState()
     if st==Enum.HumanoidStateType.FallingDown or st==Enum.HumanoidStateType.Ragdoll or st==Enum.HumanoidStateType.PlatformStand then
@@ -1030,53 +976,24 @@ RS.Stepped:Connect(function()
     if not tg.antiKB then return end
     for _,p in ipairs(P:GetPlayers()) do
         local ch=(p~=pl) and p.Character
-        if ch then
-            for _,part in ipairs(ch:GetChildren()) do
-                if part:IsA("BasePart") and part.CanCollide then part.CanCollide=false end
-            end
-        end
+        if ch then for _,part in ipairs(ch:GetChildren()) do if part:IsA("BasePart") and part.CanCollide then part.CanCollide=false end end end
     end
 end)
 
 local function onCharSpawn(char)
-    local hr=char:WaitForChild("HumanoidRootPart",10)
-    local h=char:WaitForChild("Humanoid",10)
+    local hr=char:WaitForChild("HumanoidRootPart",10) local h=char:WaitForChild("Humanoid",10)
     if not hr or not h then return end
     akbHook(char)
     pcall(function() h.BreakJointsOnDeath=false end)
     pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.FallingDown,false) end)
     pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,false) end)
-    if autoHeal.on then
-        pcall(function() h.MaxHealth=AUTOHEAL_MIN_MAX h.Health=h.MaxHealth end)
-    end
-    local busy=false
-    h.HealthChanged:Connect(function(newH)
-        if busy then return end
-        if newH>0 and autoHeal.on and newH<h.MaxHealth then
-            busy=true
-            pcall(function() h.Health=h.MaxHealth end)
-            busy=false
-        end
-        if ghostDeath.on and newH<=0 then
-            task.defer(function()
-                if not h or not h.Parent then return end
-                busy=true
-                pcall(function() h.Health=1 end)
-                pcall(function() h:ChangeState(Enum.HumanoidStateType.GetUp) end)
-                busy=false
-                task.wait(0.03)
-                if h and h.Parent then pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end) end
-            end)
-        end
-    end)
     h.StateChanged:Connect(function(old,new)
-        if new==Enum.HumanoidStateType.Landed then
-            pcall(function() h.Health=h.MaxHealth end)
-        end
+        if new==Enum.HumanoidStateType.Landed then pcall(function() h.Health=h.MaxHealth end) end
         if new==Enum.HumanoidStateType.Dead and ghostDeath.on then
             task.defer(function()
                 if not h or not h.Parent then return end
-                pcall(function() h.Health=1 end)
+                pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Dead,false) end)
+                pcall(function() h.MaxHealth=100 h.Health=0 end)
                 pcall(function() h:ChangeState(Enum.HumanoidStateType.GetUp) end)
                 task.wait(0.03)
                 if h and h.Parent then pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end) end
@@ -1093,23 +1010,17 @@ local function onCharSpawn(char)
         if hh then spinSavedAutoRotate=hh.AutoRotate hh.AutoRotate=false end
     end
     autoFlySavedPlatform=nil
-    if ghostFeet.on then
-        task.wait(0.5)
-        local hr2=char:FindFirstChild("HumanoidRootPart")
-        if hr2 then ghostFeet.baseY=hr2.Position.Y end
-    end
+    if ghostFeet.on then task.wait(0.5) local hr2=char:FindFirstChild("HumanoidRootPart") if hr2 then ghostFeet.baseY=hr2.Position.Y end end
+    if ghostDeath.on then pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Dead,false) h.MaxHealth=100 h.Health=0 end) end
 end
 pl.CharacterAdded:Connect(onCharSpawn)
 if pl.Character then task.spawn(function() onCharSpawn(pl.Character) end) end
 
--- ESP
 local evs={} local trcs={}
 local function measureBody(char)
-    local hrp=char:FindFirstChild("HumanoidRootPart")
-    local head=char:FindFirstChild("Head")
+    local hrp=char:FindFirstChild("HumanoidRootPart") local head=char:FindFirstChild("Head")
     if not hrp or not head then return nil end
-    local topY=head.Position.Y+head.Size.Y/2
-    local bottomY
+    local topY=head.Position.Y+head.Size.Y/2 local bottomY
     local rl=char:FindFirstChild("Right Leg") or char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("RightFoot")
     if rl then bottomY=rl.Position.Y-rl.Size.Y/2 else bottomY=hrp.Position.Y-2.8 end
     return {center=(topY+bottomY)/2-hrp.Position.Y,height=topY-bottomY,width=2.4}
@@ -1117,8 +1028,7 @@ end
 local function buildESP(char)
     if not char or char==pl.Character then return end
     if evs[char] then return end
-    local hr=char:FindFirstChild("HumanoidRootPart")
-    local head=char:FindFirstChild("Head") or hr
+    local hr=char:FindFirstChild("HumanoidRootPart") local head=char:FindFirstChild("Head") or hr
     if not hr or not head then return end
     local fold=Instance.new("Folder",epf) fold.Name=char.Name
     local hl=Instance.new("Highlight",fold)
@@ -1126,23 +1036,19 @@ local function buildESP(char)
     hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop hl.Enabled=tg.espBody
     local infoBB=Instance.new("BillboardGui",fold)
     infoBB.Adornee=head infoBB.Size=UDim2.new(0,220,0,50) infoBB.StudsOffset=Vector3.new(0,2.8,0)
-    infoBB.AlwaysOnTop=true infoBB.LightInfluence=0 infoBB.MaxDistance=5000
-    infoBB.Enabled=(tg.espName or tg.espDist)
+    infoBB.AlwaysOnTop=true infoBB.LightInfluence=0 infoBB.MaxDistance=5000 infoBB.Enabled=(tg.espName or tg.espDist)
     local nameLbl=Instance.new("TextLabel",infoBB)
     nameLbl.Size=UDim2.new(1,0,0,30) nameLbl.BackgroundTransparency=1 nameLbl.Text=char.Name
     nameLbl.TextColor3=G nameLbl.TextStrokeTransparency=0.1 nameLbl.TextStrokeColor3=Color3.new(0,0,0)
-    nameLbl.Font=Enum.Font.Code nameLbl.TextSize=20 nameLbl.TextXAlignment=Enum.TextXAlignment.Center
-    nameLbl.Visible=tg.espName
+    nameLbl.Font=Enum.Font.Code nameLbl.TextSize=20 nameLbl.TextXAlignment=Enum.TextXAlignment.Center nameLbl.Visible=tg.espName
     local distLbl=Instance.new("TextLabel",infoBB)
     distLbl.Size=UDim2.new(1,0,0,18) distLbl.Position=UDim2.new(0,0,0,30)
     distLbl.BackgroundTransparency=1 distLbl.Text="0m" distLbl.TextColor3=YEL
     distLbl.TextStrokeTransparency=0.2 distLbl.TextStrokeColor3=Color3.new(0,0,0)
-    distLbl.Font=Enum.Font.Code distLbl.TextSize=14 distLbl.TextXAlignment=Enum.TextXAlignment.Center
-    distLbl.Visible=tg.espDist
+    distLbl.Font=Enum.Font.Code distLbl.TextSize=14 distLbl.TextXAlignment=Enum.TextXAlignment.Center distLbl.Visible=tg.espDist
     local hpBB=Instance.new("BillboardGui",fold)
     hpBB.Adornee=hr hpBB.Size=UDim2.new(0,6,0,40) hpBB.StudsOffset=Vector3.new(1.4,0.3,0)
-    hpBB.AlwaysOnTop=true hpBB.LightInfluence=0 hpBB.MaxDistance=5000
-    hpBB.Enabled=tg.espHp
+    hpBB.AlwaysOnTop=true hpBB.LightInfluence=0 hpBB.MaxDistance=5000 hpBB.Enabled=tg.espHp
     local hpBg=Instance.new("Frame",hpBB)
     hpBg.Size=UDim2.new(1,0,1,0) hpBg.BackgroundColor3=Color3.fromRGB(0,20,10)
     hpBg.BackgroundTransparency=0.2 hpBg.BorderSizePixel=1 hpBg.BorderColor3=G
@@ -1155,8 +1061,7 @@ local function buildESP(char)
     local fxBB=Instance.new("BillboardGui",fold)
     fxBB.Adornee=hr fxBB.Size=UDim2.new(0,60,0,140)
     fxBB.StudsOffset=m and Vector3.new(0,m.center,0) or Vector3.new(0,0.3,0)
-    fxBB.AlwaysOnTop=true fxBB.LightInfluence=0 fxBB.MaxDistance=1500 fxBB.ClipsDescendants=true
-    fxBB.Enabled=tg.espBody
+    fxBB.AlwaysOnTop=true fxBB.LightInfluence=0 fxBB.MaxDistance=1500 fxBB.ClipsDescendants=true fxBB.Enabled=tg.espBody
     local scans={}
     for i=1,4 do
         local s=Instance.new("Frame",fxBB)
@@ -1168,8 +1073,7 @@ local function buildESP(char)
     end
     local dots={}
     for i=1,5 do
-        local d=Instance.new("Frame",fxBB)
-        local sz=math.random(2,3)
+        local d=Instance.new("Frame",fxBB) local sz=math.random(2,3)
         d.Size=UDim2.new(0,sz,0,sz) d.BackgroundColor3=G3 d.BackgroundTransparency=0.3 d.BorderSizePixel=0
         Instance.new("UICorner",d).CornerRadius=UDim.new(1,0)
         table.insert(dots,{obj=d,x=math.random(),y=math.random(),speed=0.15+math.random()*0.25,dir=math.random()>0.5 and 1 or -1})
@@ -1212,12 +1116,20 @@ local function scanESP()
 end
 task.spawn(function() while true do task.wait(1) scanESP() end end)
 
--- POPULATE UI
 mkSec(pages["MOVE"],"// SPEED")
 mkSli(pages["MOVE"],"Walk Speed",16,500,16,function(v) stt.ws=v end)
 mkSec(pages["MOVE"],"// JUMP")
 mkSli(pages["MOVE"],"Jump Power",50,300,50,function(v) stt.jp=v end)
 mkTog(pages["MOVE"],"INFINITE JUMP",false,function(on) tg.infJump=on end)
+mkSec(pages["MOVE"],"// AUTO CLICK")
+mkTog(pages["MOVE"],"AUTO CLICK (CROSSHAIR)",false,function(on)
+    autoClick.on=on acAcc=0 crosshair.Visible=on
+    stLbl.Text=on and "[ OK ] Auto Click ON - kéo tâm tới vị trí" or "[ OFF ] Auto Click"
+    stLbl.TextColor3=on and G or DIM
+end)
+mkSli(pages["MOVE"],"Click Speed (cps)",0,500,10,function(v)
+    autoClick.cps=v chLbl.Text="AC: "..v.."cps"
+end)
 
 mkSec(pages["ESP"],"// PLAYER ESP")
 mkTog(pages["ESP"],"ESP LINE (RAINBOW)",false,function(on)
@@ -1230,43 +1142,39 @@ mkTog(pages["ESP"],"ESP DISTANCE",false,function(on) tg.espDist=on applyESPToggl
 mkTog(pages["ESP"],"ESP BODY FX",false,function(on) tg.espBody=on applyESPToggles() scanESP() end)
 
 mkSec(pages["PLAYER"],"// SPIN CHARACTER")
-mkTog(pages["PLAYER"],"SPIN + KNOCKBACK",false,function(on) setSpinState(on) end)
+mkTog(pages["PLAYER"],"SPIN",false,function(on) setSpinState(on) end)
 mkSli(pages["PLAYER"],"Spin Speed (vong/s)",1,20,5,function(v) spinState.speed=v end)
 
 mkSec(pages["PLAYER"],"// GHOST FEET (HOVER)")
 mkTog(pages["PLAYER"],"GHOST FEET",false,function(on)
     ghostFeet.on=on
     if on then
-        local c=pl.Character
-        local hr=c and c:FindFirstChild("HumanoidRootPart")
-        if hr then
-            ghostFeet.baseY=hr.Position.Y
-            stLbl.Text="[ OK ] Base Y="..math.floor(hr.Position.Y) stLbl.TextColor3=G
-        else
-            ghostFeet.on=false stLbl.Text="[ ! ] Chưa có nhân vật" stLbl.TextColor3=YEL
-        end
-    else
-        ghostFeet.baseY=nil stLbl.Text="[ OFF ] Ghost Feet" stLbl.TextColor3=DIM
-    end
+        local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart")
+        if hr then ghostFeet.baseY=hr.Position.Y stLbl.Text="[ OK ] Base Y="..math.floor(hr.Position.Y) stLbl.TextColor3=G
+        else ghostFeet.on=false stLbl.Text="[ ! ] Chưa có nhân vật" stLbl.TextColor3=YEL end
+    else ghostFeet.baseY=nil stLbl.Text="[ OFF ] Ghost Feet" stLbl.TextColor3=DIM end
 end)
 mkSli(pages["PLAYER"],"Ghost Height",-30,100,0,function(v) ghostFeet.height=v end)
 mkBtn(pages["PLAYER"],"CALIBRATE BASE",function()
     if not ghostFeet.on then stLbl.Text="[ ! ] Bật Ghost Feet trước" stLbl.TextColor3=YEL return end
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart")
-    if hr then
-        ghostFeet.baseY=hr.Position.Y
-        stLbl.Text="[ OK ] Base Y="..math.floor(hr.Position.Y) stLbl.TextColor3=G
-    end
+    local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart")
+    if hr then ghostFeet.baseY=hr.Position.Y stLbl.Text="[ OK ] Base Y="..math.floor(hr.Position.Y) stLbl.TextColor3=G end
 end)
 
 mkSec(pages["PLAYER"],"// SURVIVAL")
 mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclip(on) end)
 mkTog(pages["PLAYER"],"ANTI KNOCKBACK (auto)",true,function(on) tg.antiKB=on akbStates(on) end)
-mkTog(pages["PLAYER"],"GHOST DEATH (UNDEAD)",false,function(on)
+mkTog(pages["PLAYER"],"GHOST DEATH (0/100)",false,function(on)
     ghostDeath.on=on
-    if on then stLbl.Text="[ OK ] Ghost Death ON - chết vẫn đi được" stLbl.TextColor3=G
-    else stLbl.Text="[ OFF ] Ghost Death" stLbl.TextColor3=DIM end
+    if on then
+        local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid")
+        if h then pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Dead,false) h.MaxHealth=100 h.Health=0 end) end
+        stLbl.Text="[ OK ] Ghost Death ON - 0/100 alive" stLbl.TextColor3=G
+    else
+        local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid")
+        if h then pcall(function() h.MaxHealth=100 h.Health=100 end) end
+        stLbl.Text="[ OFF ] Ghost Death" stLbl.TextColor3=DIM
+    end
 end)
 
 mkSec(pages["PLAYER"],"// PERFORMANCE")
@@ -1275,15 +1183,12 @@ mkTog(pages["PLAYER"],"MAP BRIGHT",false,function(on) tg.mapBright=on setMapBrig
 
 mkSec(pages["PLAYER"],"// CAMERA")
 mkSli(pages["PLAYER"],"FOV",70,120,70,function(v) cam.FieldOfView=v fovCustom=(v~=70) and v or nil end)
-
 mkSec(pages["PLAYER"],"// SOUND")
 mkSli(pages["PLAYER"],"Volume",0,100,60,function(v) SND.vol=v/100 end)
 
 mkSec(pages["PLAYER"],"// UTILITIES")
 mkBtn(pages["PLAYER"],"RESET CHARACTER",function()
-    if autoHeal.on then stLbl.Text="[ ! ] Tắt Auto Heal trước (click ♥AH)" stLbl.TextColor3=YEL return end
-    local c=pl.Character
-    if c then local h=c:FindFirstChildOfClass("Humanoid") if h then h.Health=0 end end
+    local c=pl.Character if c then local h=c:FindFirstChildOfClass("Humanoid") if h then h.Health=0 end end
 end)
 mkBtn(pages["PLAYER"],"REJOIN SERVER",function()
     local okk=pcall(function()
@@ -1299,10 +1204,7 @@ local function openTpPicker()
     for _,ch in ipairs(dlgBody:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
     for _,p in ipairs(P:GetPlayers()) do
         if p~=pl then
-            dlgBtn(p.Name,G,function()
-                tpSelected=p tpTargetBtn.Text="  > "..p.Name closeDlg()
-                stLbl.Text="[ OK ] Target: "..p.Name stLbl.TextColor3=G
-            end)
+            dlgBtn(p.Name,G,function() tpSelected=p tpTargetBtn.Text="  > "..p.Name closeDlg() stLbl.Text="[ OK ] Target: "..p.Name stLbl.TextColor3=G end)
         end
     end
     dlgBtn("CANCEL",RED,function() closeDlg() end)
@@ -1313,12 +1215,10 @@ local tpCD=false
 mkBtn(pages["TELE"],"TELEPORT TO PLAYER",function()
     if not tpSelected then stLbl.Text="[ ! ] Chọn người chơi trước" stLbl.TextColor3=YEL return end
     if tpCD then return end
-    local c=pl.Character
-    local hr=c and c:FindFirstChild("HumanoidRootPart") if not hr then return end
+    local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart") if not hr then return end
     local th=tpSelected.Character and tpSelected.Character:FindFirstChild("HumanoidRootPart")
     if not th then stLbl.Text="[ ! ] Người đó chưa có nhân vật" stLbl.TextColor3=YEL return end
-    tpCD=true
-    teleportTo(th.Position+Vector3.new(0,4,0))
+    tpCD=true teleportTo(th.Position+Vector3.new(0,4,0))
     stLbl.Text="[ OK ] Teleport -> "..tpSelected.Name stLbl.TextColor3=G
     task.wait(1) tpCD=false
 end)
@@ -1339,8 +1239,7 @@ mkSli(pages["TELE"],"WP Height",0,20,wpHeight,function(v) wpHeight=v saveWPs() e
 local wpRows={}
 local function buildWPRow(index)
     local row=Instance.new("Frame",pages["TELE"])
-    row.Size=UDim2.new(1,-8,0,34) row.BackgroundColor3=BG
-    row.BackgroundTransparency=0.3 row.BorderSizePixel=0
+    row.Size=UDim2.new(1,-8,0,34) row.BackgroundColor3=BG row.BackgroundTransparency=0.3 row.BorderSizePixel=0
     row.LayoutOrder=#pages["TELE"]:GetChildren()*10 row.ZIndex=112
     Instance.new("UICorner",row).CornerRadius=UDim.new(0,3)
     local badge=Instance.new("TextLabel",row)
@@ -1361,8 +1260,7 @@ local function buildWPRow(index)
         return b
     end
     mkMiniBtn(-102,"SET",G,function()
-        local c=pl.Character
-        local hr=c and c:FindFirstChild("HumanoidRootPart")
+        local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart")
         if hr then wps[index]={hr.CFrame:GetComponents()} saveWPs() info.Text="READY" info.TextColor3=G end
     end)
     mkMiniBtn(-68,"GO",CY,function()
@@ -1382,18 +1280,13 @@ for i=1,8 do buildWPRow(i) end
 task.spawn(function()
     while true do
         task.wait(2)
-        local c=pl.Character
-        local hr=c and c:FindFirstChild("HumanoidRootPart")
-        local myPos=hr and hr.Position
+        local c=pl.Character local hr=c and c:FindFirstChild("HumanoidRootPart") local myPos=hr and hr.Position
         if myPos then
             for i=1,8 do
                 local r=wpRows[i]
                 if r and wps[i] then
                     local sc=cfFromArr(wps[i])
-                    if sc then
-                        local d=(sc.Position-myPos).Magnitude/3.57
-                        r.info.Text=string.format("READY (%.0fm)",d)
-                    end
+                    if sc then local d=(sc.Position-myPos).Magnitude/3.57 r.info.Text=string.format("READY (%.0fm)",d) end
                 end
             end
         end
@@ -1417,8 +1310,7 @@ local function makeCard(title,accent)
     titleBar.BackgroundTransparency=0.3 titleBar.BorderSizePixel=0 titleBar.ZIndex=117
     Instance.new("UICorner",titleBar).CornerRadius=UDim.new(0,4)
     local bar=Instance.new("Frame",titleBar)
-    bar.Size=UDim2.new(0,2,0,10) bar.Position=UDim2.new(0,6,.5,-5)
-    bar.BackgroundColor3=accent bar.BorderSizePixel=0 bar.ZIndex=118
+    bar.Size=UDim2.new(0,2,0,10) bar.Position=UDim2.new(0,6,.5,-5) bar.BackgroundColor3=accent bar.BorderSizePixel=0 bar.ZIndex=118
     local tl=Instance.new("TextLabel",titleBar)
     tl.Size=UDim2.new(1,-14,1,0) tl.Position=UDim2.new(0,14,0,0)
     tl.BackgroundTransparency=1 tl.Text=title tl.Font=Enum.Font.Code
@@ -1426,8 +1318,7 @@ local function makeCard(title,accent)
     local body=Instance.new("Frame",card)
     body.Size=UDim2.new(1,-12,0,0) body.Position=UDim2.new(0,6,0,28)
     body.AutomaticSize=Enum.AutomaticSize.Y body.BackgroundTransparency=1 body.ZIndex=117
-    local bl=Instance.new("UIListLayout",body)
-    bl.Padding=UDim.new(0,3) bl.SortOrder=Enum.SortOrder.LayoutOrder
+    local bl=Instance.new("UIListLayout",body) bl.Padding=UDim.new(0,3) bl.SortOrder=Enum.SortOrder.LayoutOrder
     local function row(name,color)
         local r=Instance.new("Frame",body)
         r.Size=UDim2.new(1,0,0,18) r.BackgroundTransparency=1 r.ZIndex=118
@@ -1436,8 +1327,7 @@ local function makeCard(title,accent)
         l.Font=Enum.Font.Code l.TextSize=11 l.TextColor3=DIM l.TextXAlignment=Enum.TextXAlignment.Left l.ZIndex=119
         local v=Instance.new("TextLabel",r)
         v.Size=UDim2.new(0.5,0,1,0) v.Position=UDim2.new(0.5,0,0,0) v.BackgroundTransparency=1
-        v.Text="--" v.Font=Enum.Font.Code v.TextSize=12 v.TextColor3=color or G
-        v.TextXAlignment=Enum.TextXAlignment.Right v.ZIndex=119
+        v.Text="--" v.Font=Enum.Font.Code v.TextSize=12 v.TextColor3=color or G v.TextXAlignment=Enum.TextXAlignment.Right v.ZIndex=119
         return v
     end
     return row
@@ -1445,8 +1335,7 @@ end
 local netRow=makeCard("NETWORK",CY)
 infoRefs.ping=netRow("PING",G) infoRefs.pStat=netRow("STATUS",G)
 local perfRow=makeCard("PERFORMANCE",G)
-infoRefs.fps=perfRow("FPS",CY) infoRefs.fpsAvg=perfRow("FPS AVG",CY)
-infoRefs.mem=perfRow("MEMORY",CY) infoRefs.uptime=perfRow("UPTIME",CY)
+infoRefs.fps=perfRow("FPS",CY) infoRefs.fpsAvg=perfRow("FPS AVG",CY) infoRefs.mem=perfRow("MEMORY",CY) infoRefs.uptime=perfRow("UPTIME",CY)
 local pRow=makeCard("PLAYER",YEL)
 infoRefs.name=pRow("NAME",YEL) infoRefs.hp=pRow("HEALTH",G) infoRefs.pos=pRow("POSITION",YEL)
 local srvRow=makeCard("SERVER",G3)
@@ -1463,27 +1352,22 @@ task.spawn(function()
             local fps=math.floor(frmCnt/2) frmCnt=0
             table.insert(fpsHist,fps)
             if #fpsHist>20 then table.remove(fpsHist,1) end
-            local sum=0
-            for _,v in ipairs(fpsHist) do sum=sum+v end
+            local sum=0 for _,v in ipairs(fpsHist) do sum=sum+v end
             local avg=#fpsHist>0 and math.floor(sum/#fpsHist) or 0
-            local ping=0
-            pcall(function() ping=math.floor(pl:GetNetworkPing()*1000) end)
+            local ping=0 pcall(function() ping=math.floor(pl:GetNetworkPing()*1000) end)
             local stTxt,stCol="GOOD",G
             if ping>150 then stTxt,stCol="BAD",YEL end
             if ping>250 then stTxt,stCol="POOR",RED end
             pcall(function()
                 infoRefs.ping.Text=ping.." ms"
                 infoRefs.pStat.Text=stTxt infoRefs.pStat.TextColor3=stCol
-                infoRefs.fps.Text=fps.." fps"
-                infoRefs.fpsAvg.Text=avg.." fps"
+                infoRefs.fps.Text=fps.." fps" infoRefs.fpsAvg.Text=avg.." fps"
                 infoRefs.mem.Text=(function() local ok2,m=pcall(function() return ST:GetTotalMemoryUsageMb() end) return ok2 and m and math.floor(m).." MB" or "--" end)()
-                local u=math.floor(tick()-stT)
-                infoRefs.uptime.Text=string.format("%dm %ds",math.floor(u/60),u%60)
+                local u=math.floor(tick()-stT) infoRefs.uptime.Text=string.format("%dm %ds",math.floor(u/60),u%60)
                 infoRefs.name.Text=pl.Name
                 local c=pl.Character
                 if c then
-                    local h=c:FindFirstChildOfClass("Humanoid")
-                    local hr=c:FindFirstChild("HumanoidRootPart")
+                    local h=c:FindFirstChildOfClass("Humanoid") local hr=c:FindFirstChild("HumanoidRootPart")
                     if h then infoRefs.hp.Text=math.floor(h.Health).." / "..math.floor(h.MaxHealth) end
                     if hr then local p=hr.Position infoRefs.pos.Text=string.format("%d,%d,%d",math.floor(p.X),math.floor(p.Y),math.floor(p.Z)) end
                 end
@@ -1491,7 +1375,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v20-GHOST"
+                infoRefs.ver.Text="v22-CROSS"
                 local a={}
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
@@ -1505,7 +1389,7 @@ task.spawn(function()
                 if ghostFeet.on then table.insert(a,"GHOST") end
                 if ghostDeath.on then table.insert(a,"UNDEAD") end
                 if autoFlyState.on then table.insert(a,"FLY") end
-                if autoHeal.on then table.insert(a,"HEAL") end
+                if autoClick.on then table.insert(a,"CLICK") end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
             end)
         end
@@ -1564,8 +1448,7 @@ end
 cl.MouseButton1Click:Connect(hideMenu)
 
 task.spawn(function()
-    local tGlow=0 local tCursor=0
-    local nextGlitch=2 local glitchUntil=0
+    local tGlow=0 local tCursor=0 local nextGlitch=2 local glitchUntil=0
     while true do
         task.wait(0.06)
         tGlow=tGlow+0.06 tCursor=tCursor+0.06
@@ -1584,9 +1467,7 @@ task.spawn(function()
             if tGlow<glitchUntil then
                 title.TextColor3=(math.random()>0.5) and CY or RED
                 title.Position=UDim2.new(0,10+math.random(-3,3),0,math.random(-1,1))
-            else
-                title.TextColor3=G title.Position=UDim2.new(0,10,0,0)
-            end
+            else title.TextColor3=G title.Position=UDim2.new(0,10,0,0) end
             if tCursor>=0.6 then tCursor=0 cursor.Visible=not cursor.Visible end
         end
     end
@@ -1631,8 +1512,7 @@ do
     end)
 end
 
-local rT=0
-local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
+local rT=0 local drawingAvailable=(Drawing~=nil and Drawing.new~=nil)
 RS.RenderStepped:Connect(function(dt)
     rT=tick() cam=workspace.CurrentCamera or cam
     if fovCustom then cam.FieldOfView=fovCustom end
@@ -1641,15 +1521,10 @@ RS.RenderStepped:Connect(function(dt)
         local rb=Color3.fromHSV(rT%4/4,1,1)
         for _,p in ipairs(P:GetPlayers()) do
             if p~=pl then
-                local ch=p.Character
-                local hr=ch and ch:FindFirstChild("HumanoidRootPart")
-                local h=ch and ch:FindFirstChildOfClass("Humanoid")
+                local ch=p.Character local hr=ch and ch:FindFirstChild("HumanoidRootPart") local h=ch and ch:FindFirstChildOfClass("Humanoid")
                 local tr=trcs[p]
                 if hr and h and h.Health>0 then
-                    if not tr then
-                        local okk,r=pcall(function() return Drawing.new("Line") end)
-                        if okk and r then r.Thickness=2 r.Transparency=1 trcs[p]=r tr=r end
-                    end
+                    if not tr then local okk,r=pcall(function() return Drawing.new("Line") end) if okk and r then r.Thickness=2 r.Transparency=1 trcs[p]=r tr=r end end
                     if tr then
                         local v,on2=cam:WorldToViewportPoint(hr.Position)
                         if on2 then tr.From=ct2 tr.To=Vector2.new(v.X,v.Y) tr.Color=rb tr.Visible=true else tr.Visible=false end
@@ -1662,19 +1537,13 @@ RS.RenderStepped:Connect(function(dt)
         trcs={}
     end
     if tg.espName or tg.espHp or tg.espDist or tg.espBody then
-        local myChar=pl.Character
-        local myHR=myChar and myChar:FindFirstChild("HumanoidRootPart")
-        local myPos=myHR and myHR.Position
+        local myChar=pl.Character local myHR=myChar and myChar:FindFirstChild("HumanoidRootPart") local myPos=myHR and myHR.Position
         for char,data in pairs(evs) do
             if not char.Parent then destroyESP(char)
             else
-                local hr2=char:FindFirstChild("HumanoidRootPart")
-                local h2=char:FindFirstChildOfClass("Humanoid")
+                local hr2=char:FindFirstChild("HumanoidRootPart") local h2=char:FindFirstChildOfClass("Humanoid")
                 if hr2 and h2 then
-                    if tg.espDist and myPos then
-                        local d=(hr2.Position-myPos).Magnitude/3.57
-                        data.distLbl.Text=string.format("%.1fm",d)
-                    end
+                    if tg.espDist and myPos then local d=(hr2.Position-myPos).Magnitude/3.57 data.distLbl.Text=string.format("%.1fm",d) end
                     if tg.espHp then
                         local hp=math.clamp(h2.Health/math.max(h2.MaxHealth,1),0,1)
                         data.hpFill.Size=UDim2.new(1,0,hp,0)
@@ -1694,18 +1563,14 @@ RS.RenderStepped:Connect(function(dt)
                                 data.fxBB.Size=UDim2.new(0,math.floor(m.width*pxPerStud),0,math.floor(m.height*pxPerStud))
                             end
                         end
-                        for _,s in ipairs(data.scans) do
-                            local y=((s.offset+rT*s.speed*s.dir)%1+1)%1
-                            s.obj.Position=UDim2.new(0,0,y,0)
-                        end
+                        for _,s in ipairs(data.scans) do local y=((s.offset+rT*s.speed*s.dir)%1+1)%1 s.obj.Position=UDim2.new(0,0,y,0) end
                         for _,d in ipairs(data.dots) do
                             d.y=d.y+rT*d.speed*d.dir*0.01
                             if d.y>1.1 then d.y=-0.1 elseif d.y<-0.1 then d.y=1.1 end
                             d.obj.Position=UDim2.new(d.x,0,d.y,0)
                         end
                         local ringT=(rT*0.6)%1
-                        data.ring.Size=UDim2.new(ringT,0,ringT,0)
-                        data.ringStroke.Transparency=ringT*0.9
+                        data.ring.Size=UDim2.new(ringT,0,ringT,0) data.ringStroke.Transparency=ringT*0.9
                         local hp2=math.floor(h2.Health/math.max(h2.MaxHealth,1)*100)
                         data.dataTop.Text="HP:"..hp2.."%"
                         if data.hl then data.hl.FillTransparency=0.85+math.abs(math.sin(rT*2.5))*0.05 end
@@ -1714,21 +1579,23 @@ RS.RenderStepped:Connect(function(dt)
             end
         end
     end
+    -- Glow crosshair
+    if autoClick.on then
+        chRingStk.Transparency=0.15+math.abs(math.sin(rT*4))*0.3
+    end
 end)
 
 local jpSaved=nil
 pl.CharacterAdded:Connect(function() jpSaved=nil end)
 RS.Heartbeat:Connect(function()
     local c=pl.Character if not c then return end
-    local h=c:FindFirstChildOfClass("Humanoid")
-    local hr=c:FindFirstChild("HumanoidRootPart")
+    local h=c:FindFirstChildOfClass("Humanoid") local hr=c:FindFirstChild("HumanoidRootPart")
     if not h or not hr or h.Health<=0 then return end
     local oldBV=hr:FindFirstChild("NekoSpeed") if oldBV then oldBV:Destroy() end
     if stt.ws>16 and not autoFlyState.on then
         local md=h.MoveDirection
         if md.Magnitude>0.1 then
-            local v=hr.AssemblyLinearVelocity
-            local hv=md.Unit*stt.ws
+            local v=hr.AssemblyLinearVelocity local hv=md.Unit*stt.ws
             hr.AssemblyLinearVelocity=Vector3.new(hv.X,v.Y,hv.Z)
         end
     end
@@ -1741,8 +1608,7 @@ RS.Heartbeat:Connect(function()
 end)
 UIS.JumpRequest:Connect(function()
     if tg.infJump and not autoFlyState.on then
-        local c=pl.Character
-        local h=c and c:FindFirstChildOfClass("Humanoid")
+        local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid")
         if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
     end
 end)
@@ -1755,11 +1621,7 @@ applyESPToggles()
 task.spawn(function()
     while true do
         task.wait(2)
-        pcall(function()
-            local f=math.floor(frmCnt/2)
-            fpsLbl.Text=f.." FPS"
-            frmCnt=0
-        end)
+        pcall(function() local f=math.floor(frmCnt/2) fpsLbl.Text=f.." FPS" frmCnt=0 end)
     end
 end)
 
@@ -1773,7 +1635,7 @@ P.PlayerRemoving:Connect(function(p)
 end)
 
 playSnd("open",1.2)
-print("[HACKER NEKO v20 GHOST] loaded")
+print("[HACKER NEKO v22 CROSS] loaded")
 
 end)
 
