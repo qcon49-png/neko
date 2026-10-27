@@ -1,5 +1,5 @@
 -- ==================================================================
--- ========================= NYT MODS V6 =============================
+-- ========================= NYT MODS V8 =============================
 -- ==================================================================
 local ok, err = pcall(function()
 
@@ -32,7 +32,6 @@ local sg=Instance.new("ScreenGui")
 sg.Name="HackerNeko" sg.ResetOnSpawn=false sg.IgnoreGuiInset=true sg.DisplayOrder=9999
 sg.Parent=gp
 
--- ===== SOUND =====
 local SS=game:GetService("SoundService")
 local SND={on=true,vol=0.6}
 local KB={down={},up={},space={}}
@@ -118,8 +117,8 @@ local epf=Instance.new("Folder",ef) epf.Name="Players"
 local stt={ws=16,jp=50}
 local tg={espLine=false,espName=false,espHp=false,espDist=false,espBody=false,
     noclip=false,mapBright=false,fps=false,infJump=false,antiKB=true}
+local ghostDeath={on=false}
 
--- ===== STATE =====
 local spinState={on=false,speed=5}
 local autoFlyState={on=false,stiffness=50}
 local autoHeal={on=true}
@@ -163,7 +162,6 @@ local function cfFromArr(arr)
     return CFrame.new(arr[1],arr[2],arr[3],arr[4],arr[5],arr[6],arr[7],arr[8],arr[9],arr[10],arr[11],arr[12])
 end
 
--- ===== MAIN UI =====
 local toggleBtn=Instance.new("Frame",sg)
 toggleBtn.Size=UDim2.new(0,48,0,48) toggleBtn.Position=UDim2.new(0,30,0,120)
 toggleBtn.BackgroundColor3=BG toggleBtn.BackgroundTransparency=0.15
@@ -333,7 +331,6 @@ dlgOverlay.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then closeDlg() end
 end)
 
--- 5 TABS - GIỮ NGUYÊN
 local tabs={"MOVE","ESP","PLAYER","TELE","INFO"}
 local TAB_SHAPE={MOVE="diamond",ESP="ring",PLAYER="circle",TELE="boxin",INFO="square"}
 local pages={} local tabBtns={}
@@ -707,7 +704,6 @@ teleportTo=function(targetPos,opts)
     return true
 end
 
--- ============ SPIN ============
 local function setSpinState(on)
     spinState.on=on
     local c=pl.Character
@@ -731,7 +727,7 @@ RS.Heartbeat:Connect(function(dt)
 end)
 RS.Heartbeat:Connect(function()
     if not spinState.on then return end
-    if tick()-lastKnockTick<0.08 then return end
+    if tick()-lastKnockTick<0.05 then return end
     lastKnockTick=tick()
     local c=pl.Character
     local hr=c and c:FindFirstChild("HumanoidRootPart")
@@ -744,19 +740,25 @@ RS.Heartbeat:Connect(function()
             if hr2 then
                 local diff=hr2.Position-myPos
                 local d=diff.Magnitude
-                if d>0.5 and d<12 then
+                if d>0.5 and d<15 then
                     local dir=diff
                     if dir.Magnitude<0.5 then dir=Vector3.new(math.random(-1,1),0,math.random(-1,1)) end
                     dir=dir.Unit
-                    local vel=dir*(120-d*8)+Vector3.new(0,40,0)
-                    pcall(function() hr2.AssemblyLinearVelocity=vel end)
+                    local vel=dir*(90+math.random()*50)+Vector3.new(0,55,0)
+                    pcall(function() hr2:SetNetworkOwner(pl) end)
+                    task.defer(function()
+                        pcall(function() hr2.AssemblyLinearVelocity=vel end)
+                        pcall(function() hr2.Velocity=vel end)
+                        pcall(function() hr2:ApplyImpulse(vel*hr2:GetMass()) end)
+                        pcall(function() hr2.AssemblyAngularVelocity=Vector3.new(math.random(-40,40),math.random(-40,40),math.random(-40,40)) end)
+                    end)
+                    task.delay(0.4,function() pcall(function() hr2:SetNetworkOwnershipAuto() end) end)
                 end
             end
         end
     end
 end)
 
--- ============ GHOST FEET ============
 RS.Heartbeat:Connect(function()
     if not ghostFeet.on or not ghostFeet.baseY then return end
     if autoFlyState.on then return end
@@ -779,20 +781,31 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- ============ AUTO FLY ============
 RS.Heartbeat:Connect(function(dt)
     if autoFlySavedPlatform~=nil and (not autoFlyState.on or not tpSelected or not tpSelected.Character) then
         local c=pl.Character
         local h=c and c:FindFirstChildOfClass("Humanoid")
         local hr=c and c:FindFirstChild("HumanoidRootPart")
-        if h then pcall(function() h.PlatformStand=autoFlySavedPlatform end) end
+        if h then
+            pcall(function() h.PlatformStand=false end)
+            pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.FallingDown,false) end)
+            pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,false) end)
+        end
         autoFlySavedPlatform=nil
         if hr and h then
-            hr.CFrame=hr.CFrame+Vector3.new(0,4,0)
+            local rp=RaycastParams.new()
+            rp.FilterType=Enum.RaycastFilterType.Exclude
+            rp.FilterDescendantsInstances={c}
+            local ray=workspace:Raycast(hr.Position,Vector3.new(0,-300,0),rp)
+            local targetY
+            if ray then targetY=ray.Position.Y+3.5 else targetY=hr.Position.Y+15 end
+            local rotY=select(2,hr.CFrame:ToEulerAnglesYXZ())
+            hr.CFrame=CFrame.new(hr.Position.X,targetY,hr.Position.Z)*CFrame.Angles(0,rotY,0)
             hr.AssemblyLinearVelocity=Vector3.zero
             hr.AssemblyAngularVelocity=Vector3.zero
             pcall(function() h:ChangeState(Enum.HumanoidStateType.GetUp) end)
-            task.delay(0.4,function()
+            task.defer(function() pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end) end)
+            task.delay(0.3,function()
                 if not pl.Character then return end
                 local c2=pl.Character
                 local h2=c2:FindFirstChildOfClass("Humanoid")
@@ -804,7 +817,7 @@ RS.Heartbeat:Connect(function(dt)
                 local parts=workspace:GetPartBoundsInBox(hr2.CFrame,Vector3.new(1.4,3.6,1.4),op)
                 for _,p in ipairs(parts) do
                     if p.CanCollide then
-                        hr2.CFrame=hr2.CFrame+Vector3.new(0,5,0)
+                        hr2.CFrame=hr2.CFrame+Vector3.new(0,8,0)
                         hr2.AssemblyLinearVelocity=Vector3.zero
                         pcall(function() h2:ChangeState(Enum.HumanoidStateType.GetUp) end)
                         break
@@ -845,23 +858,50 @@ RS.Heartbeat:Connect(function(dt)
     myHR.AssemblyAngularVelocity=Vector3.zero
 end)
 
--- ============ AUTO HEAL ============
+-- AUTO HEAL (3 hook)
+local function forceHeal(h)
+    if not autoHeal.on or not h or not h.Parent then return end
+    if h.MaxHealth<AUTOHEAL_MIN_MAX then pcall(function() h.MaxHealth=AUTOHEAL_MIN_MAX end) end
+    if h.Health<h.MaxHealth then pcall(function() h.Health=h.MaxHealth end) end
+end
+RS.Stepped:Connect(function()
+    local c=pl.Character
+    forceHeal(c and c:FindFirstChildOfClass("Humanoid"))
+end)
 RS.Heartbeat:Connect(function()
-    if not autoHeal.on then return end
+    local c=pl.Character
+    forceHeal(c and c:FindFirstChildOfClass("Humanoid"))
+end)
+RS.RenderStepped:Connect(function()
+    local c=pl.Character
+    forceHeal(c and c:FindFirstChildOfClass("Humanoid"))
+end)
+-- NO FALL DAMAGE ẨN: cap velocity rơi
+RS.Stepped:Connect(function()
+    local c=pl.Character
+    local hr=c and c:FindFirstChild("HumanoidRootPart")
+    if not hr then return end
+    local v=hr.AssemblyLinearVelocity
+    if v.Y<-30 then hr.AssemblyLinearVelocity=Vector3.new(v.X,-30,v.Z) end
+end)
+-- GHOST DEATH heartbeat cứu hộ
+RS.Heartbeat:Connect(function()
+    if not ghostDeath.on then return end
     local c=pl.Character
     local h=c and c:FindFirstChildOfClass("Humanoid")
     if not h then return end
-    if h.MaxHealth<AUTOHEAL_MIN_MAX then h.MaxHealth=AUTOHEAL_MIN_MAX end
-    if h.Health<h.MaxHealth then h.Health=h.MaxHealth end
-end)
-RS.RenderStepped:Connect(function()
-    if not autoHeal.on then return end
-    local c=pl.Character
-    local h=c and c:FindFirstChildOfClass("Humanoid")
-    if h and h.Health<h.MaxHealth then h.Health=h.MaxHealth end
+    if h.Health<=0 then
+        pcall(function() h.Health=1 end)
+        pcall(function() h:ChangeState(Enum.HumanoidStateType.GetUp) end)
+        task.defer(function()
+            if h and h.Parent then pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end) end
+        end)
+    elseif h.Health<1 then
+        pcall(function() h.Health=1 end)
+    end
 end)
 
--- ============ NOCLIP ============
+-- NOCLIP
 local setNoclip
 local noclipSaved={}
 local nlSaved={}
@@ -941,7 +981,7 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
--- ============ ANTI-KB ============
+-- ANTI-KB
 local MOVERS={BodyVelocity=true,BodyForce=true,BodyThrust=true,BodyPosition=true,BodyAngularVelocity=true,
     BodyGyro=true,LinearVelocity=true,VectorForce=true,AngularVelocity=true,Torque=true}
 local akbConn=nil
@@ -1003,6 +1043,46 @@ local function onCharSpawn(char)
     local h=char:WaitForChild("Humanoid",10)
     if not hr or not h then return end
     akbHook(char)
+    pcall(function() h.BreakJointsOnDeath=false end)
+    pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.FallingDown,false) end)
+    pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,false) end)
+    if autoHeal.on then
+        pcall(function() h.MaxHealth=AUTOHEAL_MIN_MAX h.Health=h.MaxHealth end)
+    end
+    local busy=false
+    h.HealthChanged:Connect(function(newH)
+        if busy then return end
+        if newH>0 and autoHeal.on and newH<h.MaxHealth then
+            busy=true
+            pcall(function() h.Health=h.MaxHealth end)
+            busy=false
+        end
+        if ghostDeath.on and newH<=0 then
+            task.defer(function()
+                if not h or not h.Parent then return end
+                busy=true
+                pcall(function() h.Health=1 end)
+                pcall(function() h:ChangeState(Enum.HumanoidStateType.GetUp) end)
+                busy=false
+                task.wait(0.03)
+                if h and h.Parent then pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end) end
+            end)
+        end
+    end)
+    h.StateChanged:Connect(function(old,new)
+        if new==Enum.HumanoidStateType.Landed then
+            pcall(function() h.Health=h.MaxHealth end)
+        end
+        if new==Enum.HumanoidStateType.Dead and ghostDeath.on then
+            task.defer(function()
+                if not h or not h.Parent then return end
+                pcall(function() h.Health=1 end)
+                pcall(function() h:ChangeState(Enum.HumanoidStateType.GetUp) end)
+                task.wait(0.03)
+                if h and h.Parent then pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end) end
+            end)
+        end
+    end)
     task.wait(0.4)
     if not hr.Parent then return end
     nlSaved={}
@@ -1013,10 +1093,6 @@ local function onCharSpawn(char)
         if hh then spinSavedAutoRotate=hh.AutoRotate hh.AutoRotate=false end
     end
     autoFlySavedPlatform=nil
-    if autoHeal.on then
-        local hh=char:FindFirstChildOfClass("Humanoid")
-        if hh then hh.MaxHealth=AUTOHEAL_MIN_MAX hh.Health=hh.MaxHealth end
-    end
     if ghostFeet.on then
         task.wait(0.5)
         local hr2=char:FindFirstChild("HumanoidRootPart")
@@ -1026,7 +1102,7 @@ end
 pl.CharacterAdded:Connect(onCharSpawn)
 if pl.Character then task.spawn(function() onCharSpawn(pl.Character) end) end
 
--- ============ ESP ============
+-- ESP
 local evs={} local trcs={}
 local function measureBody(char)
     local hrp=char:FindFirstChild("HumanoidRootPart")
@@ -1136,15 +1212,13 @@ local function scanESP()
 end
 task.spawn(function() while true do task.wait(1) scanESP() end end)
 
--- ============ POPULATE UI ============
--- MOVE TAB: chỉ Speed/Jump/InfJump
+-- POPULATE UI
 mkSec(pages["MOVE"],"// SPEED")
 mkSli(pages["MOVE"],"Walk Speed",16,500,16,function(v) stt.ws=v end)
 mkSec(pages["MOVE"],"// JUMP")
 mkSli(pages["MOVE"],"Jump Power",50,300,50,function(v) stt.jp=v end)
 mkTog(pages["MOVE"],"INFINITE JUMP",false,function(on) tg.infJump=on end)
 
--- ESP TAB
 mkSec(pages["ESP"],"// PLAYER ESP")
 mkTog(pages["ESP"],"ESP LINE (RAINBOW)",false,function(on)
     tg.espLine=on
@@ -1155,7 +1229,6 @@ mkTog(pages["ESP"],"ESP HEALTH",false,function(on) tg.espHp=on applyESPToggles()
 mkTog(pages["ESP"],"ESP DISTANCE",false,function(on) tg.espDist=on applyESPToggles() scanESP() end)
 mkTog(pages["ESP"],"ESP BODY FX",false,function(on) tg.espBody=on applyESPToggles() scanESP() end)
 
--- PLAYER TAB: tất cả nhân vật
 mkSec(pages["PLAYER"],"// SPIN CHARACTER")
 mkTog(pages["PLAYER"],"SPIN + KNOCKBACK",false,function(on) setSpinState(on) end)
 mkSli(pages["PLAYER"],"Spin Speed (vong/s)",1,20,5,function(v) spinState.speed=v end)
@@ -1190,6 +1263,11 @@ end)
 mkSec(pages["PLAYER"],"// SURVIVAL")
 mkTog(pages["PLAYER"],"NOCLIP (SMOOTH)",false,function(on) tg.noclip=on setNoclip(on) end)
 mkTog(pages["PLAYER"],"ANTI KNOCKBACK (auto)",true,function(on) tg.antiKB=on akbStates(on) end)
+mkTog(pages["PLAYER"],"GHOST DEATH (UNDEAD)",false,function(on)
+    ghostDeath.on=on
+    if on then stLbl.Text="[ OK ] Ghost Death ON - chết vẫn đi được" stLbl.TextColor3=G
+    else stLbl.Text="[ OFF ] Ghost Death" stLbl.TextColor3=DIM end
+end)
 
 mkSec(pages["PLAYER"],"// PERFORMANCE")
 mkTog(pages["PLAYER"],"FPS BOOST",false,function(on) tg.fps=on setFPS(on) end)
@@ -1214,7 +1292,6 @@ mkBtn(pages["PLAYER"],"REJOIN SERVER",function()
     if not okk then stLbl.Text="[ ! ] Rejoin lỗi" stLbl.TextColor3=RED end
 end)
 
--- TELE TAB
 mkSec(pages["TELE"],"// TELEPORT TO PLAYER")
 local tpTargetBtn=mkBtn(pages["TELE"],"SELECT PLAYER",function() end)
 local function openTpPicker()
@@ -1323,7 +1400,6 @@ task.spawn(function()
     end
 end)
 
--- INFO TAB
 local infoRoot=Instance.new("Frame",pages["INFO"])
 infoRoot.Size=UDim2.new(1,-8,0,0) infoRoot.AutomaticSize=Enum.AutomaticSize.Y
 infoRoot.BackgroundTransparency=1 infoRoot.LayoutOrder=10 infoRoot.ZIndex=115
@@ -1415,7 +1491,7 @@ task.spawn(function()
                 infoRefs.place.Text=tostring(game.PlaceId)
                 infoRefs.players.Text=#P:GetPlayers().." / "..P.MaxPlayers
                 infoRefs.time.Text=os.date("%H:%M:%S")
-                infoRefs.ver.Text="v18-TABS"
+                infoRefs.ver.Text="v20-GHOST"
                 local a={}
                 if tg.espLine then table.insert(a,"LINE") end
                 if tg.espName then table.insert(a,"NAME") end
@@ -1427,6 +1503,7 @@ task.spawn(function()
                 if tg.fps then table.insert(a,"FPS+") end
                 if spinState.on then table.insert(a,"SPIN") end
                 if ghostFeet.on then table.insert(a,"GHOST") end
+                if ghostDeath.on then table.insert(a,"UNDEAD") end
                 if autoFlyState.on then table.insert(a,"FLY") end
                 if autoHeal.on then table.insert(a,"HEAL") end
                 infoRefs.active.Text=(#a==0) and "none" or table.concat(a,",")
@@ -1639,7 +1716,6 @@ RS.RenderStepped:Connect(function(dt)
     end
 end)
 
--- SPEED / JUMP
 local jpSaved=nil
 pl.CharacterAdded:Connect(function() jpSaved=nil end)
 RS.Heartbeat:Connect(function()
@@ -1697,7 +1773,7 @@ P.PlayerRemoving:Connect(function(p)
 end)
 
 playSnd("open",1.2)
-print("[HACKER NEKO v18 TABS] loaded")
+print("[HACKER NEKO v20 GHOST] loaded")
 
 end)
 
