@@ -8,7 +8,8 @@ local G=Color3.fromRGB(0,255,120) local G2=Color3.fromRGB(0,180,80) local G3=Col
 local DIM=Color3.fromRGB(0,80,40) local BG=Color3.fromRGB(5,10,8) local BG2=Color3.fromRGB(8,18,12)
 local TX=Color3.fromRGB(180,255,200) local CY=Color3.fromRGB(0,255,255)
 local RED=Color3.fromRGB(255,60,80) local YEL=Color3.fromRGB(255,220,100) local ORG=Color3.fromRGB(255,150,50)
-local gp pcall(function() gp=gethui and gethui() end)
+local gp
+pcall(function() gp=gethui and gethui() end)
 if not gp then pcall(function() gp=game:GetService("CoreGui") end) end
 if not gp then gp=pl:WaitForChild("PlayerGui") end
 pcall(function() if gp:FindFirstChild("HackerNeko") then gp.HackerNeko:Destroy() end
