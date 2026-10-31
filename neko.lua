@@ -1,812 +1,431 @@
-local P = game:GetService("Players")
-local RS = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local T = game:GetService("TweenService")
-local L = game:GetService("Lighting")
-local TS = game:GetService("TeleportService")
-local ST = game:GetService("Stats")
-local HS = game:GetService("HttpService")
+local P=game:GetService("Players") local RS=game:GetService("RunService") local UIS=game:GetService("UserInputService") local T=game:GetService("TweenService") local L=game:GetService("Lighting") local TS=game:GetService("TeleportService") local ST=game:GetService("Stats") local HS=game:GetService("HttpService") local pl=P.LocalPlayer local cam=workspace.CurrentCamera
 
-local ok, err = pcall(function()
-local pl = P.LocalPlayer
-local cam = workspace.CurrentCamera
+local C={BG=Color3.fromRGB(15,15,20),PANEL=Color3.fromRGB(30,30,40),PINK=Color3.fromRGB(255,20,147),TEXT=Color3.fromRGB(255,255,255),OFF=Color3.fromRGB(60,60,70),GREEN=Color3.fromRGB(0,255,100),YELLOW=Color3.fromRGB(255,200,50),RED=Color3.fromRGB(255,60,60)}
 
--- Color Palette (Cyberpunk Neon Cyan Theme)
-local ACCENT = Color3.fromRGB(0, 240, 255)
-local BG_MAIN = Color3.fromRGB(13, 16, 23)
-local BG_SEC = Color3.fromRGB(20, 25, 35)
-local BG_CARD = Color3.fromRGB(26, 32, 46)
-local TXT = Color3.fromRGB(235, 240, 245)
-local TXT_DIM = Color3.fromRGB(120, 135, 155)
-local RED = Color3.fromRGB(255, 75, 95)
-local GREEN = Color3.fromRGB(0, 255, 150)
-local YEL = Color3.fromRGB(255, 200, 80)
-
-local gp
--- Prefer the executor's private UI container when available.
-if type(gethui) == "function" then
-    local huiOK, hui = pcall(gethui)
-    if huiOK and hui then gp = hui end
-end
--- PlayerGui is the supported fallback for ordinary client LocalScripts.
-if not gp and pl then
-    local guiOK, playerGui = pcall(function() return pl:WaitForChild("PlayerGui", 10) end)
-    if guiOK then gp = playerGui end
-end
-assert(gp, "Không tìm thấy UI container. Hãy chạy script ở client.")
-
-pcall(function()
-if gp:FindFirstChild("NekoModern") then gp.NekoModern:Destroy() end
+local gp=(gethui and gethui()) or game:GetService("CoreGui")
+if gp:FindFirstChild("NekoHack") then gp.NekoHack:Destroy() end
 if gp:FindFirstChild("NekoESP") then gp.NekoESP:Destroy() end
-end)
 
-local sg = Instance.new("ScreenGui")
-sg.Name = "NekoModern"
-sg.ResetOnSpawn = false
-sg.IgnoreGuiInset = true
-sg.DisplayOrder = 9999
-sg.Parent = gp
+local sg=Instance.new("ScreenGui",gp) sg.Name="NekoHack" sg.ResetOnSpawn=false sg.IgnoreGuiInset=true sg.DisplayOrder=9999
+local ef=Instance.new("Folder",gp) ef.Name="NekoESP"
+local epf=Instance.new("Folder",ef) epf.Name="Players"
 
-local SND = {on = true, vol = 0.5}
-local function playSnd()
-if not SND.on then return end
-pcall(function()
-local sd = Instance.new("Sound")
-sd.SoundId = "rbxasset://sounds/clickfast.wav"
-sd.Volume = SND.vol
-sd.Parent = game:GetService("SoundService")
-sd:Play()
-task.delay(1, function() sd:Destroy() end)
-end)
+local stt={ws=16,hh=10,jp=50,fov=70,wpHeight=3}
+local tg={ghost=false,hover=false,espLine=false,espName=false,espHp=false,espDist=false,espBody=false,fps=false,infJump=false,aimE=false,aimA=false,autoFly=false,npcEsp=false}
+
+-- ================= WAYPOINT DATA (5 điểm) =================
+local WPF="NekoWP_"..tostring(game.PlaceId)..".json"
+local hfa=(writefile~=nil) and (readfile~=nil) and (isfile~=nil)
+local wd={height=3,points={{name="WP 1",cf=nil},{name="WP 2",cf=nil},{name="WP 3",cf=nil},{name="WP 4",cf=nil},{name="WP 5",cf=nil}}}
+
+if hfa and isfile(WPF) then 
+    pcall(function() 
+        local d=HS:JSONDecode(readfile(WPF)) 
+        if d then 
+            if d.height then wd.height=d.height end 
+            if type(d.points)=="table" then 
+                for i=1,5 do 
+                    if d.points[i] then 
+                        if d.points[i].name then wd.points[i].name=d.points[i].name end 
+                        if d.points[i].cf then wd.points[i].cf=d.points[i].cf end 
+                    end 
+                end 
+            end 
+        end 
+    end) 
+end
+local function svW() if not hfa then return end pcall(function() writefile(WPF,HS:JSONEncode(wd)) end) end
+
+-- ================= UI MENU =================
+local main=Instance.new("Frame",sg)
+main.Size=UDim2.new(0,700,0,420)
+main.Position=UDim2.new(0.5,-350,0.5,-210)
+main.BackgroundColor3=C.BG main.BorderSizePixel=0 main.Visible=false main.Active=true main.Draggable=true
+Instance.new("UICorner",main).CornerRadius=UDim.new(0,10)
+local ms=Instance.new("UIStroke",main) ms.Color=C.PINK ms.Thickness=2
+
+local hd=Instance.new("Frame",main)
+hd.Size=UDim2.new(1,0,0,40) hd.BackgroundColor3=C.PANEL hd.BorderSizePixel=0
+Instance.new("UICorner",hd).CornerRadius=UDim.new(0,10)
+local hFix=Instance.new("Frame",hd) hFix.Size=UDim2.new(1,0,0,10) hFix.Position=UDim2.new(0,0,1,-10) hFix.BackgroundColor3=C.PANEL hFix.BorderSizePixel=0
+local title=Instance.new("TextLabel",hd) title.Size=UDim2.new(1,-40,1,0) title.Position=UDim2.new(0,15,0,0) title.BackgroundTransparency=1 title.Text="NEKO HACK" title.Font=Enum.Font.GothamBold title.TextSize=16 title.TextColor3=C.PINK title.TextXAlignment=Enum.TextXAlignment.Left
+local xBtn=Instance.new("TextButton",hd) xBtn.Size=UDim2.new(0,30,0,30) xBtn.Position=UDim2.new(1,-35,0.5,-15) xBtn.BackgroundTransparency=1 xBtn.Text="X" xBtn.Font=Enum.Font.GothamBold xBtn.TextSize=18 xBtn.TextColor3=C.PINK xBtn.AutoButtonColor=false
+xBtn.MouseButton1Click:Connect(function() main.Visible=false end)
+
+local sb=Instance.new("Frame",main)
+sb.Size=UDim2.new(0,130,1,-50) sb.Position=UDim2.new(0,5,0,45) sb.BackgroundColor3=C.PANEL sb.BorderSizePixel=0
+Instance.new("UICorner",sb).CornerRadius=UDim.new(0,8)
+local sbl=Instance.new("UIListLayout",sb) sbl.Padding=UDim.new(0,5) sbl.SortOrder=Enum.SortOrder.LayoutOrder sbl.HorizontalAlignment=Enum.HorizontalAlignment.Center
+local pad=Instance.new("Frame",sb) pad.Size=UDim2.new(1,0,0,5) pad.BackgroundTransparency=1 pad.LayoutOrder=0
+
+local ct=Instance.new("Frame",main)
+ct.Size=UDim2.new(1,-145,1,-50) ct.Position=UDim2.new(0,140,0,45) ct.BackgroundColor3=C.PANEL ct.BorderSizePixel=0
+Instance.new("UICorner",ct).CornerRadius=UDim.new(0,8)
+
+local tabs={"Movement","ESP","Player","Follow","NPC","Info"}
+local pg={}
+for i,n in ipairs(tabs) do
+    local p=Instance.new("ScrollingFrame",ct)
+    p.Size=UDim2.new(1,-10,1,-10) p.Position=UDim2.new(0,5,0,5)
+    p.BackgroundTransparency=1 p.BorderSizePixel=0 p.ScrollBarThickness=3 p.ScrollBarImageColor3=C.PINK
+    p.AutomaticCanvasSize=Enum.AutomaticSize.Y p.Visible=(i==1)
+    local l=Instance.new("UIListLayout",p) l.Padding=UDim.new(0,5) l.SortOrder=Enum.SortOrder.LayoutOrder
+    pg[n]=p
 end
 
--- Global States
-local stt = {ws = 16, jp = 50}
-local tg = {espCombined = false, noclip = false, mapBright = false, fps = false, infJump = false}
-local ghostDeath = {on = false}
-local spinState = {on = false, speed = 5}
-local ghostFeet = {on = false, height = 0, baseY = nil}
-local autoFlyState = {on = false, stiffness = 50}
-local spinAccum = 0
-local aimRadius = 20
-local aimlockOn = false
-local Target = nil
-
-local function GetTargetPart(character)
-if not character then return nil end
-return character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
+local tb={}
+local function swT(name)
+    for n,p in pairs(pg) do p.Visible=(n==name) end
+    for n,b in pairs(tb) do
+        if n==name then b.f.BackgroundColor3=C.PINK b.f.TextColor3=Color3.new(1,1,1) else b.f.BackgroundColor3=C.BG b.f.TextColor3=C.TEXT end
+    end
+end
+for i,n in ipairs(tabs) do
+    local t=Instance.new("TextButton",sb)
+    t.Size=UDim2.new(1,-10,0,35) t.BackgroundColor3=C.BG t.BorderSizePixel=0 t.Text=n t.Font=Enum.Font.GothamBold t.TextSize=13 t.TextColor3=C.TEXT t.LayoutOrder=i
+    Instance.new("UICorner",t).CornerRadius=UDim.new(0,6)
+    t.MouseButton1Click:Connect(function() swT(n) end)
+    tb[n]={f=t}
 end
 
--- AIMLOCK AUTO 360 & CLOSEST PLAYER
-RS.RenderStepped:Connect(function()
-if not aimlockOn then Target = nil return end
-local myChar = pl.Character
-local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
-if not myHrp then Target = nil return end
-
-local closestTarget = nil
-local shortestDistance = aimRadius * 3.57
-
-for _, player in ipairs(P:GetPlayers()) do
-if player ~= pl and player.Character then
-local char = player.Character
-local humanoid = char:FindFirstChildOfClass("Humanoid")
-local targetPart = GetTargetPart(char)
-if humanoid and humanoid.Health > 0 and targetPart then
-local d = (targetPart.Position - myHrp.Position).Magnitude
-if d <= shortestDistance then
-shortestDistance = d
-closestTarget = targetPart
+-- ================= UI HELPERS =================
+local function mkSec(pr,txt)
+    local s=Instance.new("Frame",pr) s.Size=UDim2.new(1,0,0,20) s.BackgroundTransparency=1 s.LayoutOrder=#pr:GetChildren()*10
+    local l=Instance.new("TextLabel",s) l.Size=UDim2.new(1,0,1,0) l.BackgroundTransparency=1 l.Text=txt l.Font=Enum.Font.GothamBold l.TextSize=12 l.TextColor3=C.PINK l.TextXAlignment=Enum.TextXAlignment.Left
 end
+local function mkTog(pr,nm,cbf)
+    local c=Instance.new("Frame",pr) c.Size=UDim2.new(1,-4,0,36) c.BackgroundColor3=C.BG c.BorderSizePixel=0 c.LayoutOrder=#pr:GetChildren()*10
+    Instance.new("UICorner",c).CornerRadius=UDim.new(0,6)
+    local l=Instance.new("TextLabel",c) l.Size=UDim2.new(1,-70,1,0) l.Position=UDim2.new(0,10,0,0) l.BackgroundTransparency=1 l.Text=nm l.Font=Enum.Font.Gotham l.TextSize=12 l.TextColor3=C.TEXT l.TextXAlignment=Enum.TextXAlignment.Left
+    local p=Instance.new("TextButton",c) p.Size=UDim2.new(0,50,0,24) p.Position=UDim2.new(1,-60,0.5,-12) p.BackgroundColor3=C.OFF p.BorderSizePixel=0 p.Text="OFF" p.Font=Enum.Font.GothamBold p.TextSize=10 p.TextColor3=C.TEXT
+    Instance.new("UICorner",p).CornerRadius=UDim.new(1,0)
+    local s=false
+    p.MouseButton1Click:Connect(function()
+        s=not s
+        if s then p.BackgroundColor3=C.GREEN p.Text="ON" p.TextColor3=Color3.new(0,0,0) else p.BackgroundColor3=C.OFF p.Text="OFF" p.TextColor3=C.TEXT end
+        if cbf then pcall(cbf,s) end
+    end)
 end
+local function mkSli(pr,nm,mn,mx,dv,cbf)
+    local c=Instance.new("Frame",pr) c.Size=UDim2.new(1,-4,0,40) c.BackgroundColor3=C.BG c.BorderSizePixel=0 c.LayoutOrder=#pr:GetChildren()*10
+    Instance.new("UICorner",c).CornerRadius=UDim.new(0,6)
+    local l=Instance.new("TextLabel",c) l.Size=UDim2.new(1,-20,0,16) l.Position=UDim2.new(0,10,0,4) l.BackgroundTransparency=1 l.Text=nm..": "..tostring(dv) l.Font=Enum.Font.Gotham l.TextSize=12 l.TextColor3=C.TEXT l.TextXAlignment=Enum.TextXAlignment.Left
+    local tr=Instance.new("Frame",c) tr.Size=UDim2.new(1,-20,0,6) tr.Position=UDim2.new(0,10,0,26) tr.BackgroundColor3=C.OFF tr.BorderSizePixel=0
+    Instance.new("UICorner",tr).CornerRadius=UDim.new(1,0)
+    local pc=math.clamp((dv-mn)/(mx-mn),0,1)
+    local f=Instance.new("Frame",tr) f.Size=UDim2.new(pc,0,1,0) f.BackgroundColor3=C.PINK f.BorderSizePixel=0
+    Instance.new("UICorner",f).CornerRadius=UDim.new(1,0)
+    local bt=Instance.new("TextButton",tr) bt.Size=UDim2.new(1,0,4,0) bt.Position=UDim2.new(0,0,-1.5,0) bt.BackgroundTransparency=1 bt.Text=""
+    local drg=false
+    local function up(x)
+        local p=math.clamp((x-tr.AbsolutePosition.X)/tr.AbsoluteSize.X,0,1)
+        f.Size=UDim2.new(p,0,1,0)
+        local v=minV or (mn+(mx-mn)*p)
+        v=math.floor(v + 0.5)
+        l.Text=nm..": "..tostring(v)
+        if cbf then cbf(v) end
+    end
+    bt.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drg=true up(i.Position.X) end end)
+    UIS.InputChanged:Connect(function(i) if drg and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then up(i.Position.X) end end)
+    UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drg=false end end)
 end
-end
-Target = closestTarget
-if Target then
-cam.CFrame = CFrame.new(cam.CFrame.Position, Target.Position)
-end
-end)
-
--- COMBINED ESP (2 COLUMNS)
-local espTable = {}
-RS.RenderStepped:Connect(function()
-for p, data in pairs(espTable) do
-if not p.Parent or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then
-if data.bb then data.bb:Destroy() end
-espTable[p] = nil
-else
-local char = p.Character
-local hrp = char.HumanoidRootPart
-local head = char:FindFirstChild("Head") or hrp
-local hum = char:FindFirstChildOfClass("Humanoid")
-
-if tg.espCombined and hum and hum.Health > 0 then
-if not data.bb then
-data.bb = Instance.new("BillboardGui", gp)
-data.bb.Adornee = head
-data.bb.Size = UDim2.new(0, 140, 0, 40)
-data.bb.StudsOffset = Vector3.new(0, 2.8, 0)
-data.bb.AlwaysOnTop = true
-
-data.mainF = Instance.new("Frame", data.bb)
-data.mainF.Size = UDim2.new(1, 0, 1, 0)
-data.mainF.BackgroundTransparency = 0.4
-data.mainF.BackgroundColor3 = BG_MAIN
-Instance.new("UICorner", data.mainF).CornerRadius = UDim.new(0, 6)
-local stroke = Instance.new("UIStroke", data.mainF)
-stroke.Color = ACCENT
-stroke.Thickness = 1
-
-data.txtCol = Instance.new("TextLabel", data.mainF)
-data.txtCol.Size = UDim2.new(1, 0, 0.5, 0)
-data.txtCol.Position = UDim2.new(0, 0, 0, 2)
-data.txtCol.BackgroundTransparency = 1
-data.txtCol.TextColor3 = ACCENT
-data.txtCol.Font = Enum.Font.GothamBold
-data.txtCol.TextSize = 11
-data.txtCol.TextXAlignment = Enum.TextXAlignment.Center
-
-data.hpBg = Instance.new("Frame", data.mainF)
-data.hpBg.Size = UDim2.new(0.8, 0, 0, 8)
-data.hpBg.Position = UDim2.new(0.1, 0, 0.65, 0)
-data.hpBg.BackgroundColor3 = BG_SEC
-data.hpBg.BorderSizePixel = 0
-Instance.new("UICorner", data.hpBg).CornerRadius = UDim.new(1, 0)
-
-data.hpFill = Instance.new("Frame", data.hpBg)
-data.hpFill.Size = UDim2.new(1, 0, 1, 0)
-data.hpFill.BackgroundColor3 = GREEN
-data.hpFill.BorderSizePixel = 0
-Instance.new("UICorner", data.hpFill).CornerRadius = UDim.new(1, 0)
+local function mkBtn(pr,nm,cbf)
+    local b=Instance.new("TextButton",pr) b.Size=UDim2.new(1,-4,0,34) b.BackgroundColor3=C.BG b.BorderSizePixel=0 b.Text=nm b.Font=Enum.Font.GothamBold b.TextSize=12 b.TextColor3=C.TEXT b.LayoutOrder=#pr:GetChildren()*10
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
+    b.MouseButton1Click:Connect(function() if cbf then pcall(cbf) end end)
+    return b
 end
 
-local dist = math.floor((hrp.Position - pl.Character.HumanoidRootPart.Position).Magnitude / 3.57)
-data.txtCol.Text = p.Name .. " [" .. dist .. "m]"
-local pct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
-data.hpFill.Size = UDim2.new(pct, 0, 1, 0)
-data.hpFill.BackgroundColor3 = pct > 0.5 and GREEN or RED
-data.bb.Enabled = true
-else
-if data.bb then data.bb.Enabled = false end
-end
-end
-end
-end)
-
-task.spawn(function()
-while true do
-task.wait(1)
-for _, p in ipairs(P:GetPlayers()) do
-if p ~= pl and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not espTable[p] then
-espTable[p] = {}
-end
-end
-end
-end)
-
--- WAYPOINTS SYSTEM (5 SLOTS)
-local hfa = (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil)
-local WPF = "NekoWPs_5_" .. tostring(game.PlaceId) .. ".json"
-local wps = {nil, nil, nil, nil, nil}
-local wpHeight = 3
-
-if hfa and isfile(WPF) then
-pcall(function()
-local d = HS:JSONDecode(readfile(WPF))
-if d then
-if type(d.height) == "number" then wpHeight = d.height end
-if type(d.wps) == "table" then
-for i = 1, 5 do
-local w = d.wps[tostring(i)] or d.wps[i]
-if type(w) == "table" then wps[i] = w end
-end
-end
-end
-end)
+-- ================= CHỨC NĂNG =================
+local function teleportTo(pos)
+    local c=pl.Character if not c then return end
+    local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return end
+    pcall(function() hr:SetNetworkOwner(pl) end) task.wait(0.1)
+    hr.AssemblyLinearVelocity=Vector3.zero hr.AssemblyAngularVelocity=Vector3.zero
+    local tgt=CFrame.new(pos+Vector3.new(0,3,0))
+    hr.CFrame=tgt RS.Heartbeat:Wait()
+    pcall(function() hr:SetNetworkOwner(pl) end) hr.CFrame=tgt hr.AssemblyLinearVelocity=Vector3.zero
 end
 
-local function saveWPs()
-if not hfa then return end
-pcall(function()
-local out = {}
-for i = 1, 5 do if wps[i] then out[tostring(i)] = wps[i] end end
-writefile(WPF, HS:JSONEncode({height = wpHeight, wps = out}))
-end)
-end
+-- 1. MOVEMENT
+mkSec(pg.Movement,"// MOVEMENT")
+mkSli(pg.Movement,"Walk Speed",16,200,16,function(v) stt.ws=v end)
+mkSli(pg.Movement,"Jump Power",50,300,50,function(v) stt.jp=v end)
+mkTog(pg.Movement,"Infinite Jump",function(on) tg.infJump=on end)
+mkSli(pg.Movement,"Hover Height",2,20,10,function(v) stt.hh=v end)
+mkTog(pg.Movement,"Chân Ma (Lơ lửng)",function(on) tg.hover=on end)
 
-local function teleportTo(targetPos, opts)
-opts = opts or {}
-local c = pl.Character if not c then return false end
-local hr = c:FindFirstChild("HumanoidRootPart") if not hr then return false end
-local cf = opts.cframe or (CFrame.new(targetPos) * (hr.CFrame - hr.CFrame.Position))
-hr.CFrame = cf
-hr.AssemblyLinearVelocity = Vector3.zero
-return true
-end
+-- 2. ESP
+mkSec(pg.ESP,"// ESP PLAYER")
+mkTog(pg.ESP,"ESP Line",function(on) tg.espLine=on end)
+mkTog(pg.ESP,"ESP Name",function(on) tg.espName=on applyESPToggles() end)
+mkTog(pg.ESP,"ESP Health",function(on) tg.espHp=on applyESPToggles() end)
+mkTog(pg.ESP,"ESP Distance",function(on) tg.espDist=on applyESPToggles() end)
+mkTog(pg.ESP,"ESP Body (Hologram)",function(on) tg.espBody=on applyESPToggles() end)
 
--- UI DESIGN
-local toggleBtn = Instance.new("Frame", sg)
-toggleBtn.Size = UDim2.new(0, 52, 0, 52)
-toggleBtn.Position = UDim2.new(0, 20, 0.35, 0)
-toggleBtn.BackgroundColor3 = BG_MAIN
-toggleBtn.BorderSizePixel = 0
-toggleBtn.Active = true
-toggleBtn.ZIndex = 500
-Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 14)
+-- 3. PLAYER
+mkSec(pg.Player,"// PLAYER")
+mkTog(pg.Player,"Ghost (Xuyên tường)",function(on) tg.ghost=on tGhost(on) end)
+mkTog(pg.Player,"FPS Boost",function(on) tg.fps=on tFPS(on) end)
+mkTog(pg.Player,"Aimlock Enemy",function(on) tg.aimE=on end)
+mkTog(pg.Player,"Aimlock All",function(on) tg.aimA=on end)
+mkSli(pg.Player,"FOV",70,120,70,function(v) cam.FieldOfView=v end)
+mkBtn(pg.Player,"Reset Character",function() local c=pl.Character if c then local h=c:FindFirstChildOfClass("Humanoid") if h then h.Health=0 end end end)
+mkBtn(pg.Player,"Rejoin Server",function() pcall(function() TS:TeleportToPlaceInstance(game.PlaceId,game.JobId,pl) end) end)
 
-local tGlow = Instance.new("UIStroke", toggleBtn)
-tGlow.Color = ACCENT
-tGlow.Thickness = 1.5
-
-local tIcon = Instance.new("TextLabel", toggleBtn)
-tIcon.Size = UDim2.new(1, 0, 1, 0)
-tIcon.BackgroundTransparency = 1
-tIcon.Text = "⚡"
-tIcon.Font = Enum.Font.GothamBold
-tIcon.TextSize = 22
-tIcon.TextColor3 = ACCENT
-tIcon.ZIndex = 501
-
-local main = Instance.new("Frame", sg)
-main.Size = UDim2.new(0, 480, 0, 360)
-main.Position = UDim2.new(0.5, -240, 0.5, -180)
-main.BackgroundColor3 = BG_MAIN
-main.BorderSizePixel = 0
-main.Active = true
-main.Visible = false
-main.ZIndex = 100
-main.AnchorPoint = Vector2.new(0.5, 0.5)
-main.Position = UDim2.fromScale(0.5, 0.5)
-
-local mainScale = Instance.new("UIScale")
-mainScale.Scale = 1
-mainScale.Parent = main
-local function updateMainScale()
-    local currentCamera = workspace.CurrentCamera
-    if not currentCamera then return end
-    local viewport = currentCamera.ViewportSize
-    local sx = math.max(0.65, (viewport.X - 24) / 480)
-    local sy = math.max(0.65, (viewport.Y - 24) / 360)
-    mainScale.Scale = math.min(1, sx, sy)
-    main.Position = UDim2.fromScale(0.5, 0.5)
-end
-updateMainScale()
-if workspace.CurrentCamera then
-    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateMainScale)
-end
-workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    task.defer(updateMainScale)
-    local currentCamera = workspace.CurrentCamera
-    if currentCamera then
-        currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateMainScale)
+-- 4. FOLLOW (AUTO FLY + WAYPOINT)
+mkSec(pg.Follow,"// AUTO FLY")
+local fTarget=nil
+local fListFrame=Instance.new("Frame",pg.Follow) fListFrame.Size=UDim2.new(1,-4,0,0) fListFrame.AutomaticSize=Enum.AutomaticSize.Y fListFrame.BackgroundColor3=C.BG fListFrame.LayoutOrder=#pg.Follow:GetChildren()*10
+Instance.new("UICorner",fListFrame).CornerRadius=UDim.new(0,6)
+local fLay=Instance.new("UIListLayout",fListFrame) fLay.Padding=UDim.new(0,2) fLay.SortOrder=Enum.SortOrder.LayoutOrder
+local fBtn=mkBtn(pg.Follow,"CHỌN PLAYER",function()
+    for _,c in ipairs(fListFrame:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+    for i,p in ipairs(P:GetPlayers()) do
+        if p~=pl then
+            local r=Instance.new("TextButton",fListFrame) r.Size=UDim2.new(1,-8,0,24) r.BackgroundColor3=C.OFF r.BorderSizePixel=0 r.Text="> "..p.Name r.Font=Enum.Font.Gotham r.TextSize=12 r.TextColor3=C.TEXT r.TextXAlignment=Enum.TextXAlignment.Left r.LayoutOrder=i
+            Instance.new("UICorner",r).CornerRadius=UDim.new(0,4)
+            r.MouseButton1Click:Connect(function() fTarget=p fBtn.Text="MỤC TIÊU: "..p.Name end)
+        end
     end
 end)
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+mkTog(pg.Follow,"BẬT AUTO FLY",function(on) tg.autoFly=on end)
 
-local mainStroke = Instance.new("UIStroke", main)
-mainStroke.Color = ACCENT
-mainStroke.Thickness = 1.5
-mainStroke.Transparency = 0.5
-
-local topBar = Instance.new("Frame", main)
-topBar.Size = UDim2.new(1, 0, 0, 42)
-topBar.BackgroundColor3 = BG_SEC
-topBar.BorderSizePixel = 0
-topBar.ZIndex = 101
-Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 12)
-
-local title = Instance.new("TextLabel", topBar)
-title.Size = UDim2.new(1, -60, 1, 0)
-title.Position = UDim2.new(0, 16, 0, 0)
-title.BackgroundTransparency = 1
-title.Text = "NEKO HUB  //  FIXED EDITION"
-title.TextColor3 = ACCENT
-title.Font = Enum.Font.GothamBold
-title.TextSize = 13
-title.TextXAlignment = Enum.TextXAlignment.Left
-
-local closeBtn = Instance.new("TextButton", topBar)
-closeBtn.Size = UDim2.new(0, 28, 0, 28)
-closeBtn.Position = UDim2.new(1, -36, 0.5, -14)
-closeBtn.BackgroundColor3 = BG_CARD
-closeBtn.Text = "✕"
-closeBtn.TextColor3 = RED
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 13
-closeBtn.AutoButtonColor = false
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
-closeBtn.MouseButton1Click:Connect(function() playSnd() main.Visible = false end)
-
-local dragging, dragStart, startPos = false, nil, nil
-topBar.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = true dragStart = i.Position startPos = main.Position end end)
-UIS.InputChanged:Connect(function(i) if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then local d = i.Position - dragStart main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y) end end)
-UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
-
-local tDragging, tDragStart, tStartPos = false, nil, nil
-toggleBtn.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then tDragging = true tDragStart = i.Position tStartPos = toggleBtn.Position end end)
-UIS.InputChanged:Connect(function(i) if tDragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then local d = i.Position - tDragStart toggleBtn.Position = UDim2.new(tStartPos.X.Scale, tStartPos.X.Offset + d.X, tStartPos.Y.Scale, tStartPos.Y.Offset + d.Y) end end)
-UIS.InputEnded:Connect(function(i)
-if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-if tDragging then
-tDragging = false
-if (i.Position - tDragStart).Magnitude < 10 then playSnd() main.Visible = not main.Visible end
+mkSec(pg.Follow,"// WAYPOINTS (5 Điểm)")
+mkSli(pg.Follow,"Độ cao TP",-10,30,3,function(v) stt.wpHeight=v end)
+for i=1,5 do
+    local idx=i
+    local pt=wd.points[idx]
+    local row=Instance.new("Frame",pg.Follow) row.Size=UDim2.new(1,-4,0,35) row.BackgroundColor3=C.BG row.LayoutOrder=#pg.Follow:GetChildren()*10
+    Instance.new("UICorner",row).CornerRadius=UDim.new(0,6)
+    
+    local txt=Instance.new("TextBox",row) txt.Size=UDim2.new(0,100,0,24) txt.Position=UDim2.new(0,5,0.5,-12) txt.BackgroundColor3=C.OFF txt.BorderSizePixel=0 txt.Text=" "..pt.name txt.Font=Enum.Font.Gotham txt.TextSize=12 txt.TextColor3=C.TEXT txt.ClearTextOnFocus=false
+    Instance.new("UICorner",txt).CornerRadius=UDim.new(0,4)
+    txt.FocusLost:Connect(function() pt.name=string.gsub(txt.Text,"^%s+","") svW() end)
+    
+    local setB=Instance.new("TextButton",row) setB.Size=UDim2.new(0,35,0,24) setB.Position=UDim2.new(1,-120,0.5,-12) setB.BackgroundColor3=pt.cf and C.GREEN or C.PINK setB.BorderSizePixel=0 setB.Text="SET" setB.Font=Enum.Font.GothamBold setB.TextSize=11 setB.TextColor3=pt.cf and Color3.new(0,0,0) or C.TEXT
+    Instance.new("UICorner",setB).CornerRadius=UDim.new(0,4)
+    
+    local tpB=Instance.new("TextButton",row) tpB.Size=UDim2.new(0,45,0,24) tpB.Position=UDim2.new(1,-80,0.5,-12) tpB.BackgroundColor3=C.PINK tpB.BorderSizePixel=0 tpB.Text="TELE" tpB.Font=Enum.Font.GothamBold tpB.TextSize=11 tpB.TextColor3=C.TEXT
+    Instance.new("UICorner",tpB).CornerRadius=UDim.new(0,4)
+    
+    local xB=Instance.new("TextButton",row) xB.Size=UDim2.new(0,25,0,24) xB.Position=UDim2.new(1,-30,0.5,-12) xB.BackgroundColor3=C.RED xB.BorderSizePixel=0 xB.Text="X" xB.Font=Enum.Font.GothamBold xB.TextSize=11 xB.TextColor3=C.TEXT
+    Instance.new("UICorner",xB).CornerRadius=UDim.new(0,4)
+    
+    setB.MouseButton1Click:Connect(function()
+        local c=pl.Character if not c then return end local hr=c:FindFirstChild("HumanoidRootPart") if not hr then return end
+        pt.cf={hr.CFrame:GetComponents()} svW() setB.BackgroundColor3=C.GREEN setB.TextColor3=Color3.new(0,0,0)
+    end)
+    tpB.MouseButton1Click:Connect(function()
+        if not pt.cf then return end
+        local cc=pt.cf
+        local sc=CFrame.new(cc[1],cc[2],cc[3],cc[4],cc[5],cc[6],cc[7],cc[8],cc[9],cc[10],cc[11],cc[12])
+        teleportTo(sc.Position+Vector3.new(0,stt.wpHeight,0))
+    end)
+    xB.MouseButton1Click:Connect(function()
+        pt.cf=nil svW() setB.BackgroundColor3=C.PINK setB.TextColor3=C.TEXT
+    end)
 end
+
+-- 5. NPC
+mkSec(pg.NPC,"// NPC ESP")
+mkTog(pg.NPC,"Bật tô màu NPC",function(on) tg.npcEsp=on end)
+
+-- 6. INFO
+local ip=pg.Info
+local function mkIR(pr,lb) local r=Instance.new("Frame",pr) r.Size=UDim2.new(1,-4,0,20) r.BackgroundTransparency=1 r.LayoutOrder=#pr:GetChildren()*10 local l=Instance.new("TextLabel",r) l.Size=UDim2.new(0.5,0,1,0) l.BackgroundTransparency=1 l.Text=" "..lb l.Font=Enum.Font.Gotham l.TextSize=11 l.TextColor3=Color3.fromRGB(150,150,150) l.TextXAlignment=Enum.TextXAlignment.Left local v=Instance.new("TextLabel",r) v.Size=UDim2.new(0.5,0,1,0) v.Position=UDim2.new(0.5,0,0,0) v.BackgroundTransparency=1 v.Text="..." v.Font=Enum.Font.GothamBold v.TextSize=11 v.TextColor3=C.TEXT v.TextXAlignment=Enum.TextXAlignment.Right return v end
+local wF=mkIR(ip,"FPS") local wP=mkIR(ip,"PING") local wH=mkIR(ip,"HEALTH") local wPl=mkIR(ip,"PLAYERS") local wU=mkIR(ip,"UPTIME") local wEn=mkIR(ip,"ENTITIES")
+
+-- ================= LOGIC (HEARTBEAT) =================
+local function applyESPToggles()
+    for char,data in pairs(evs) do
+        if char.Parent then
+            data.nameLbl.Visible=tg.espName
+            data.distLbl.Visible=tg.espDist
+            data.hpBB.Enabled=tg.espHp
+            data.fxBB.Enabled=tg.espBody
+            data.hl.Enabled=tg.espBody
+            data.infoBB.Enabled=(tg.espName or tg.espDist)
+        end
+    end
 end
+
+local function tGhost(on)
+    local ch=pl.Character if not ch then return end
+    local h=ch:FindFirstChildOfClass("Humanoid") if not h then return end
+    if on then
+        for _,pt in ipairs(ch:GetDescendants()) do
+            if pt:IsA("BasePart") then pt.CanCollide=false pt.CanQuery=false pt.CanTouch=false pt.LocalTransparencyModifier=1 end
+        end
+    else
+        for _,pt in ipairs(ch:GetDescendants()) do
+            if pt:IsA("BasePart") then pt.CanCollide=true pt.CanQuery=true pt.CanTouch=true pt.LocalTransparencyModifier=0 end
+        end
+    end
+end
+
+local function tFPS(on)
+    if on then
+        for _,o in ipairs(workspace:GetDescendants()) do
+            if o:IsA("ParticleEmitter") or o:IsA("Trail") or o:IsA("Beam") or o:IsA("Fire") or o:IsA("Smoke") then o.Enabled=false end
+        end
+        L.GlobalShadows=false L.FogEnd=1000
+    else
+        for _,o in ipairs(workspace:GetDescendants()) do
+            if o:IsA("ParticleEmitter") or o:IsA("Trail") or o:IsA("Beam") or o:IsA("Fire") or o:IsA("Smoke") then o.Enabled=true end
+        end
+        L.GlobalShadows=true L.FogEnd=100000
+    end
+end
+
+-- ESP Logic
+local evs={}
+local trcs={}
+local function buildESP(char)
+    if not char or char==pl.Character then return end
+    task.spawn(function()
+        local hr=char:WaitForChild("HumanoidRootPart",5) if not hr then return end
+        local head=char:FindFirstChild("Head") or hr
+        if evs[char] then evs[char].folder:Destroy() evs[char]=nil end
+        local fold=Instance.new("Folder",epf) fold.Name=char.Name
+        local hl=Instance.new("Highlight",fold) hl.Adornee=char hl.FillColor=C.PINK hl.FillTransparency=0.8 hl.OutlineColor=C.PINK hl.OutlineTransparency=0 hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+        
+        local info=Instance.new("BillboardGui",fold) info.Adornee=head info.Size=UDim2.new(0,200,0,40) info.StudsOffset=Vector3.new(0,2.5,0) info.AlwaysOnTop=true
+        local n=Instance.new("TextLabel",info) n.Size=UDim2.new(1,0,0,25) n.BackgroundTransparency=1 n.Text=char.Name n.TextColor3=C.PINK n.Font=Enum.Font.GothamBold n.TextSize=18 n.TextStrokeTransparency=0.2
+        local d=Instance.new("TextLabel",info) d.Size=UDim2.new(1,0,0,15) d.Position=UDim2.new(0,0,0,25) d.BackgroundTransparency=1 d.Text="0m" d.TextColor3=C.YELLOW d.Font=Enum.Font.Gotham n.TextSize=12
+        
+        local hpBB=Instance.new("BillboardGui",fold) hpBB.Adornee=hr hpBB.Size=UDim2.new(0,10,0,60) hpBB.StudsOffset=Vector3.new(2,0,0) hpBB.AlwaysOnTop=true
+        local hpBg=Instance.new("Frame",hpBB) hpBg.Size=UDim2.new(1,0,1,0) hpBg.BackgroundColor3=C.OFF Instance.new("UICorner",hpBg).CornerRadius=UDim.new(0,4)
+        local hpF=Instance.new("Frame",hpBg) hpF.AnchorPoint=Vector2.new(0,1) hpF.Position=UDim2.new(0,0,1,0) hpF.Size=UDim2.new(1,0,1,0) hpF.BackgroundColor3=C.GREEN Instance.new("UICorner",hpF).CornerRadius=UDim.new(0,4)
+        
+        evs[char]={folder=fold,hl=hl,infoBB=info,nameLbl=n,distLbl=d,hpBB=hpBB,hpFill=hpF,fxBB=Instance.new("BillboardGui")}
+    end)
+end
+
+-- NPC ESP Logic
+local function scanNPCs()
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and obj:FindFirstChild("HumanoidRootPart") then
+            local isP=false
+            for _,p in ipairs(P:GetPlayers()) do if p.Character==obj then isP=true break end end
+            if not isP then
+                if not obj:FindFirstChild("NekoNPCHL") then
+                    local h=Instance.new("Highlight",obj) h.Name="NekoNPCHL" h.FillColor=C.YELLOW h.OutlineColor=Color3.new(1,1,1) h.FillTransparency=0.6 h.OutlineTransparency=0 h.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+                end
+            end
+        end
+    end
+end
+
+-- ================= RENDER LOOPS =================
+RS.Heartbeat:Connect(function()
+    local c=pl.Character if not c then return end
+    local h=c:FindFirstChildOfClass("Humanoid") local hr=c:FindFirstChild("HumanoidRootPart")
+    if not h or not hr then return end
+    
+    -- WalkSpeed
+    if not tg.hover then h.WalkSpeed = (stt.ws>16) and stt.ws or 16 end
+    if stt.jp>50 then h.UseJumpPower=true h.JumpPower=stt.jp end
+    
+    -- Hover
+    if tg.hover then
+        h.HipHeight=stt.hh h:SetStateEnabled(Enum.HumanoidStateType.Falling,false) h:SetStateEnabled(Enum.HumanoidStateType.Freefall,false) pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end)
+    else
+        if h.HipHeight>2 then h.HipHeight=2 end
+        h:SetStateEnabled(Enum.HumanoidStateType.Falling,true) h:SetStateEnabled(Enum.HumanoidStateType.Freefall,true)
+    end
+    
+    -- Auto Fly
+    if tg.autoFly and fTarget and fTarget.Character then
+        local tHrp=fTarget.Character:FindFirstChild("HumanoidRootPart")
+        if tHrp then
+            local targetPos=tHrp.Position + (tHrp.CFrame.LookVector * -4) + Vector3.new(0,3,0)
+            local dir=(targetPos - hr.Position)
+            if dir.Magnitude > 1 then
+                hr.AssemblyLinearVelocity = dir.Unit * math.clamp(dir.Magnitude * 5, 0, 60)
+                h:SetStateEnabled(Enum.HumanoidStateType.Falling,false)
+            else
+                hr.AssemblyLinearVelocity = Vector3.zero
+            end
+        end
+    end
 end)
 
-local sideBar = Instance.new("Frame", main)
-sideBar.Size = UDim2.new(0, 110, 1, -54)
-sideBar.Position = UDim2.new(0, 10, 0, 48)
-sideBar.BackgroundTransparency = 1
-local sideLay = Instance.new("UIListLayout", sideBar)
-sideLay.Padding = UDim.new(0, 6)
-
-local content = Instance.new("Frame", main)
-content.Size = UDim2.new(1, -136, 1, -54)
-content.Position = UDim2.new(0, 126, 0, 48)
-content.BackgroundTransparency = 1
-
-local tabs = {"MOVE", "ESP", "PLAYER", "TELE", "AIM", "INFO"}
-local pages = {}
-
-local function switchTab(name)
-for n, p in pairs(pages) do p.Visible = (n == name) end
-for _, b in ipairs(sideBar:GetChildren()) do
-if b:IsA("TextButton") then
-local active = (b.Text == "  " .. name)
-T:Create(b, TweenInfo.new(0.2), {BackgroundColor3 = active and ACCENT or BG_SEC, TextColor3 = active and BG_MAIN or TXT_DIM}):Play()
-end
-end
-end
-
-for i, name in ipairs(tabs) do
-local btn = Instance.new("TextButton", sideBar)
-btn.Size = UDim2.new(1, 0, 0, 36)
-btn.BackgroundColor3 = (i == 1) and ACCENT or BG_SEC
-btn.Text = "  " .. name
-btn.TextColor3 = (i == 1) and BG_MAIN or TXT_DIM
-btn.Font = Enum.Font.GothamBold
-btn.TextSize = 12
-btn.TextXAlignment = Enum.TextXAlignment.Left
-btn.AutoButtonColor = false
-Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-
-btn.MouseButton1Click:Connect(function() playSnd() switchTab(name) end)
-
-local page = Instance.new("ScrollingFrame", content)
-page.Size = UDim2.new(1, 0, 1, 0)
-page.BackgroundTransparency = 1
-page.BorderSizePixel = 0
-page.ScrollBarThickness = 3
-page.ScrollBarImageColor3 = ACCENT
-page.CanvasSize = UDim2.new(0, 0, 0, 0)
-page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-page.Visible = (i == 1)
-local lay = Instance.new("UIListLayout", page)
-lay.Padding = UDim.new(0, 8)
-pages[name] = page
-end
-
-local function mkSec(parent, text)
-local s = Instance.new("Frame", parent)
-s.Size = UDim2.new(1, -8, 0, 22)
-s.BackgroundTransparency = 1
-local l = Instance.new("TextLabel", s)
-l.Size = UDim2.new(1, 0, 1, 0)
-l.BackgroundTransparency = 1
-l.Text = "◈ " .. text
-l.Font = Enum.Font.GothamBold
-l.TextSize = 11
-l.TextColor3 = ACCENT
-l.TextXAlignment = Enum.TextXAlignment.Left
-return s
-end
-
-local function mkTog(parent, text, default, callback)
-local state = default or false
-local b = Instance.new("TextButton", parent)
-b.Size = UDim2.new(1, -8, 0, 36)
-b.BackgroundColor3 = BG_CARD
-b.Text = "   " .. text
-b.TextColor3 = TXT
-b.TextXAlignment = Enum.TextXAlignment.Left
-b.Font = Enum.Font.GothamMedium
-b.TextSize = 12
-b.AutoButtonColor = false
-Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
-
-local ind = Instance.new("Frame", b)
-ind.Size = UDim2.new(0, 36, 0, 18)
-ind.Position = UDim2.new(1, -44, 0.5, -9)
-ind.BackgroundColor3 = state and ACCENT or BG_SEC
-Instance.new("UICorner", ind).CornerRadius = UDim.new(1, 0)
-
-local dot = Instance.new("Frame", ind)
-dot.Size = UDim2.new(0, 12, 0, 12)
-dot.Position = UDim2.new(0, state and 20 or 4, 0.5, -6)
-dot.BackgroundColor3 = state and BG_MAIN or TXT_DIM
-Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-
-b.MouseButton1Click:Connect(function()
-state = not state
-playSnd()
-T:Create(ind, TweenInfo.new(0.2), {BackgroundColor3 = state and ACCENT or BG_SEC}):Play()
-T:Create(dot, TweenInfo.new(0.2), {Position = UDim2.new(0, state and 20 or 4, 0.5, -6), BackgroundColor3 = state and BG_MAIN or TXT_DIM}):Play()
-if callback then callback(state) end
-end)
-return b
-end
-
-local function mkBtn(parent, text, callback)
-local b = Instance.new("TextButton", parent)
-b.Size = UDim2.new(1, -8, 0, 36)
-b.BackgroundColor3 = BG_CARD
-b.Text = "   " .. text
-b.TextColor3 = TXT
-b.TextXAlignment = Enum.TextXAlignment.Left
-b.Font = Enum.Font.GothamMedium
-b.TextSize = 12
-b.AutoButtonColor = false
-Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
-b.MouseButton1Click:Connect(function() playSnd() if callback then callback(b) end end)
-return b
-end
-
-local function mkSli(parent, text, min, max, default, callback)
-local f = Instance.new("Frame", parent)
-f.Size = UDim2.new(1, -8, 0, 44)
-f.BackgroundColor3 = BG_CARD
-Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
-
-local lbl = Instance.new("TextLabel", f)
-lbl.Size = UDim2.new(1, -16, 0, 20)
-lbl.Position = UDim2.new(0, 12, 0, 4)
-lbl.BackgroundTransparency = 1
-lbl.Text = text .. ": " .. default
-lbl.TextColor3 = TXT
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.Font = Enum.Font.GothamMedium
-lbl.TextSize = 12
-
-local bar = Instance.new("Frame", f)
-bar.Size = UDim2.new(1, -24, 0, 4)
-bar.Position = UDim2.new(0, 12, 0, 30)
-bar.BackgroundColor3 = BG_SEC
-bar.BorderSizePixel = 0
-Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-
-local fill = Instance.new("Frame", bar)
-fill.Size = UDim2.new((default-min)/(max-min), 0, 1, 0)
-fill.BackgroundColor3 = ACCENT
-fill.BorderSizePixel = 0
-Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-local hit = Instance.new("TextButton", f)
-hit.Size = UDim2.new(1, 0, 1, 0)
-hit.BackgroundTransparency = 1
-hit.Text = ""
-
-local drag = false
-hit.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drag = true end end)
-UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drag = false end end)
-UIS.InputChanged:Connect(function(i)
-if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-local width = bar.AbsoluteSize.X
-local p = width > 0 and math.clamp((i.Position.X - bar.AbsolutePosition.X) / width, 0, 1) or 0
-fill.Size = UDim2.new(p, 0, 1, 0)
-local val = math.floor(min + (max - min) * p)
-lbl.Text = text .. ": " .. val
-if callback then callback(val) end
-end
-end)
-return f
-end
-
--- POPULATE PAGES
-
--- MOVE PAGE
-local movePage = pages["MOVE"]
-mkSec(movePage, "MOVEMENT SETTINGS")
-mkSli(movePage, "Walk Speed", 16, 300, 16, function(v) stt.ws = v end)
-mkSli(movePage, "Jump Power", 50, 300, 50, function(v) stt.jp = v end)
-mkTog(movePage, "Infinite Jump", false, function(s) tg.infJump = s end)
-
--- ESP PAGE
-local espPage = pages["ESP"]
-mkSec(espPage, "COMBINED ESP (2 COLUMNS)")
-mkTog(espPage, "ESP Name, Dist & Health", false, function(s) tg.espCombined = s end)
-
--- PLAYER PAGE
-local plPage = pages["PLAYER"]
-mkSec(plPage, "CHARACTER CONTROL")
-mkTog(plPage, "Spin Bot", false, function(s)
-spinState.on = s
-local h = pl.Character and pl.Character:FindFirstChildOfClass("Humanoid")
-if h then h.AutoRotate = not s end
-end)
-mkSli(plPage, "Spin Speed", 1, 20, 5, function(v) spinState.speed = v end)
-
-mkTog(plPage, "Ghost Feet", false, function(s)
-ghostFeet.on = s
-if s then local hr = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") if hr then ghostFeet.baseY = hr.Position.Y end end
-end)
-mkSli(plPage, "Ghost Height", -30, 100, 0, function(v) ghostFeet.height = v end)
-
-mkSec(plPage, "SURVIVAL & RENDER")
-mkTog(plPage, "Noclip", false, function(s) tg.noclip = s end)
-mkTog(plPage, "Ghost Death (Undead)", false, function(s) ghostDeath.on = s end)
-mkTog(plPage, "FPS Boost", false, function(s) tg.fps = s L.GlobalShadows = not s end)
-mkTog(plPage, "Map Brightness", false, function(s) tg.mapBright = s L.Brightness = s and 3 or 1 end)
-mkSli(plPage, "Camera FOV", 70, 120, 70, function(v) cam.FieldOfView = v end)
-
-mkSec(plPage, "UTILITIES")
-mkBtn(plPage, "Reset Character", function() if pl.Character then pl.Character:BreakJoints() end end)
-mkBtn(plPage, "Rejoin Server", function() TS:Teleport(game.PlaceId, pl) end)
-
--- TELEPORT PAGE
-local telePage = pages["TELE"]
-mkSec(telePage, "AUTO FLY (CLOSEST TARGET)")
-mkTog(telePage, "Auto Fly (Follow Closest)", false, function(s) autoFlyState.on = s end)
-mkSli(telePage, "Fly Stiffness", 10, 120, 50, function(v) autoFlyState.stiffness = v end)
-
-mkSec(telePage, "WAYPOINTS SYSTEM (5 SLOTS)")
-mkSli(telePage, "WP Teleport Height", 0, 20, wpHeight, function(v) wpHeight = v saveWPs() end)
-for i = 1, 5 do
-local row = Instance.new("Frame", telePage)
-row.Size = UDim2.new(1, -8, 0, 36)
-row.BackgroundColor3 = BG_CARD
-Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-
-local info = Instance.new("TextLabel", row)
-info.Size = UDim2.new(1, -110, 1, 0)
-info.Position = UDim2.new(0, 12, 0, 0)
-info.BackgroundTransparency = 1
-info.Text = "Waypoint " .. i
-info.TextColor3 = TXT_DIM
-info.Font = Enum.Font.GothamMedium
-info.TextSize = 12
-info.TextXAlignment = Enum.TextXAlignment.Left
-
-local setB = Instance.new("TextButton", row)
-setB.Size = UDim2.new(0, 30, 0, 24)
-setB.Position = UDim2.new(1, -74, 0.5, -12)
-setB.BackgroundColor3 = BG_SEC
-setB.Text = "SET"
-setB.TextColor3 = ACCENT
-setB.Font = Enum.Font.GothamBold
-setB.TextSize = 10
-Instance.new("UICorner", setB).CornerRadius = UDim.new(0, 6)
-setB.MouseButton1Click:Connect(function()
-local hr = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
-if hr then wps[i] = {hr.CFrame:GetComponents()} saveWPs() info.Text = "WP " .. i .. " [Saved]" info.TextColor3 = GREEN end
+-- ESP Update & NPC Scan
+local scanCD=0
+local espCD=0
+RS.Heartbeat:Connect(function()
+    local t=tick()
+    -- NPC Scan
+    if tg.npcEsp and t-scanCD>2 then
+        scanCD=t
+        scanNPCs()
+    elseif not tg.npcEsp and t-scanCD>0 then
+        scanCD=t
+        for _,o in ipairs(workspace:GetDescendants()) do if o.Name=="NekoNPCHL" then o:Destroy() end end
+    end
+    
+    -- ESP Player Update
+    if tg.espName or tg.espHp or tg.espDist or tg.espBody or tg.espLine then
+        local myPos=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") and pl.Character.HumanoidRootPart.Position
+        for _,p in ipairs(P:GetPlayers()) do
+            if p~=pl and p.Character then
+                if not evs[p.Character] then buildESP(p.Character) end
+                if evs[p.Character] and myPos then
+                    local hr2=p.Character:FindFirstChild("HumanoidRootPart") local h2=p.Character:FindFirstChildOfClass("Humanoid")
+                    if hr2 and h2 then
+                        if tg.espDist then evs[p.Character].distLbl.Text=string.format("%.1fm",(hr2.Position-myPos).Magnitude/3.57) end
+                        if tg.espHp then local hp=math.clamp(h2.Health/h2.MaxHealth,0,1) evs[p.Character].hpFill.Size=UDim2.new(1,0,hp,0) evs[p.Character].hpFill.BackgroundColor3=hp>0.6 and C.GREEN or (hp>0.3 and C.YELLOW or C.RED) end
+                    end
+                end
+            end
+        end
+    end
 end)
 
-local goB = Instance.new("TextButton", row)
-goB.Size = UDim2.new(0, 30, 0, 24)
-goB.Position = UDim2.new(1, -40, 0.5, -12)
-goB.BackgroundColor3 = BG_SEC
-goB.Text = "GO"
-goB.TextColor3 = YEL
-goB.Font = Enum.Font.GothamBold
-goB.TextSize = 10
-Instance.new("UICorner", goB).CornerRadius = UDim.new(0, 6)
-goB.MouseButton1Click:Connect(function()
-if wps[i] then teleportTo(Vector3.new(wps[i][1], wps[i][2] + wpHeight, wps[i][3])) end
+-- Aimlock
+RS.RenderStepped:Connect(function()
+    if tg.aimE or tg.aimA then
+        local c=pl.Character if not c or not c:FindFirstChild("HumanoidRootPart") then return end
+        local hds={} for _,p in ipairs(P:GetPlayers()) do if p~=pl and p.Character then local hd=p.Character:FindFirstChild("Head") local h=p.Character:FindFirstChildOfClass("Humanoid") if hd and h and h.Health>0 then local isE=true if p.Team and pl.Team and p.Team==pl.Team then isE=false end if tg.aimA or (tg.aimE and isE) then table.insert(hds,hd) end end end end
+        if #hds>0 then
+            local cn=Vector2.new(cam.ViewportSize.X/2,cam.ViewportSize.Y/2) local bt,bd=nil,math.huge
+            for _,h in ipairs(hds) do local sp,on2=cam:WorldToViewportPoint(h.Position) if on2 then local dd=(Vector2.new(sp.X,sp.Y)-cn).Magnitude if dd<bd then bd=dd bt=h end end end
+            if bt then cam.CFrame=cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position,bt.Position),0.3) end
+        end
+    end
 end)
 
-local xB = Instance.new("TextButton", row)
-xB.Size = UDim2.new(0, 30, 0, 24)
-xB.Position = UDim2.new(1, -108, 0.5, -12)
-xB.BackgroundColor3 = BG_SEC
-xB.Text = "✕"
-xB.TextColor3 = RED
-xB.Font = Enum.Font.GothamBold
-xB.TextSize = 10
-Instance.new("UICorner", xB).CornerRadius = UDim.new(0, 6)
-xB.MouseButton1Click:Connect(function() wps[i] = nil saveWPs() info.Text = "Waypoint " .. i info.TextColor3 = TXT_DIM end)
-end
-
--- AIMBOT PAGE
-local aimPage = pages["AIM"]
-mkSec(aimPage, "AUTO 360 AIMBOT (CLOSEST)")
-mkTog(aimPage, "Aimlock Auto (360°)", false, function(s) aimlockOn = s end)
-mkSli(aimPage, "Aim Range (Meters)", 5, 50, 20, function(v) aimRadius = v end)
-
--- INFO PAGE
-local infoPage = pages["INFO"]
-local function mkCard(titleText, accent)
-local card = Instance.new("Frame", infoPage)
-card.Size = UDim2.new(1, -8, 0, 0)
-card.AutomaticSize = Enum.AutomaticSize.Y
-card.BackgroundColor3 = BG_CARD
-card.BorderSizePixel = 0
-Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
-
-local titleBar = Instance.new("Frame", card)
-titleBar.Size = UDim2.new(1, 0, 0, 26)
-titleBar.BackgroundColor3 = BG_SEC
-titleBar.BorderSizePixel = 0
-Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 8)
-
-local tl = Instance.new("TextLabel", titleBar)
-tl.Size = UDim2.new(1, -14, 1, 0)
-tl.Position = UDim2.new(0, 12, 0, 0)
-tl.BackgroundTransparency = 1
-tl.Text = titleText
-tl.Font = Enum.Font.GothamBold
-tl.TextSize = 11
-tl.TextColor3 = accent
-tl.TextXAlignment = Enum.TextXAlignment.Left
-
-local body = Instance.new("Frame", card)
-body.Size = UDim2.new(1, -24, 0, 0)
-body.Position = UDim2.new(0, 12, 0, 30)
-body.AutomaticSize = Enum.AutomaticSize.Y
-body.BackgroundTransparency = 1
-local bl = Instance.new("UIListLayout", body)
-bl.Padding = UDim.new(0, 4)
-
-local function row(name, color)
-local r = Instance.new("Frame", body)
-r.Size = UDim2.new(1, 0, 0, 18)
-r.BackgroundTransparency = 1
-
-local l = Instance.new("TextLabel", r)
-l.Size = UDim2.new(0.5, 0, 1, 0)
-l.BackgroundTransparency = 1
-l.Text = name
-l.Font = Enum.Font.GothamMedium
-l.TextSize = 11
-l.TextColor3 = TXT_DIM
-l.TextXAlignment = Enum.TextXAlignment.Left
-
-local v = Instance.new("TextLabel", r)
-v.Size = UDim2.new(0.5, 0, 1, 0)
-v.Position = UDim2.new(0.5, 0, 0, 0)
-v.BackgroundTransparency = 1
-v.Text = "--"
-v.Font = Enum.Font.GothamBold
-v.TextSize = 11
-v.TextColor3 = color or ACCENT
-v.TextXAlignment = Enum.TextXAlignment.Right
-return v
-end
-return row
-end
-
-local netR = mkCard("NETWORK & SYSTEM METRICS", ACCENT)
-local pingLbl = netR("PING", GREEN)
-local statusLbl = netR("STATUS", GREEN)
-local tempLbl = netR("DEVICE TEMP", YEL)
-
-local perfR = mkCard("PERFORMANCE METRICS", GREEN)
-local fpsLbl = perfR("FPS", ACCENT)
-local memLbl = perfR("MEMORY (RAM)", ACCENT)
-local uptimeLbl = perfR("UPTIME", ACCENT)
-
-local pR = mkCard("PLAYER METRICS", YEL)
-local nameLbl = pR("NAME", YEL)
-local hpLbl = pR("HEALTH", GREEN)
-local posLbl = pR("POSITION (XYZ)", YEL)
-local speedLbl = pR("WALK SPEED", ACCENT)
-
-local frmCnt = 0
-local stT = tick()
-RS.RenderStepped:Connect(function() frmCnt = frmCnt + 1 end)
-
+-- Info Loop
+local stT=tick()
+local fCnt=0 RS.RenderStepped:Connect(function() fCnt=fCnt+1 end)
 task.spawn(function()
-while true do
-task.wait(1)
-local f = frmCnt
-frmCnt = 0
-local ping = 0
-pcall(function() ping = math.floor(pl:GetNetworkPing() * 1000) end)
-local stTxt, stCol = "STABLE", GREEN
-if ping > 150 then stTxt, stCol = "MODERATE", YEL end
-if ping > 250 then stTxt, stCol = "POOR", RED end
-
-local devTemp = math.floor(36 + (f < 30 and 4 or 1) + math.random(1, 3))
-
-pcall(function()
-pingLbl.Text = ping .. " ms"
-statusLbl.Text = stTxt
-statusLbl.TextColor3 = stCol
-tempLbl.Text = devTemp .. "°C (Normal)"
-fpsLbl.Text = f .. " FPS"
-memLbl.Text = (function() local ok2, m = pcall(function() return ST:GetTotalMemoryUsageMb() end) return ok2 and m and math.floor(m) .. " MB" or "--" end)()
-local u = math.floor(tick() - stT)
-uptimeLbl.Text = string.format("%dm %ds", math.floor(u / 60), u % 60)
-nameLbl.Text = pl.Name
-local c = pl.Character
-if c then
-local h = c:FindFirstChildOfClass("Humanoid")
-local hr = c:FindFirstChild("HumanoidRootPart")
-if h then 
-hpLbl.Text = math.floor(h.Health) .. " / " .. math.floor(h.MaxHealth) 
-speedLbl.Text = math.floor(h.WalkSpeed)
-end
-if hr then local p = hr.Position posLbl.Text = string.format("%d, %d, %d", math.floor(p.X), math.floor(p.Y), math.floor(p.Z)) end
-end
-end)
-end
+    while true do
+        task.wait(1)
+        wF.Text = fCnt.." FPS" fCnt=0
+        wP.Text = math.floor(pl:GetNetworkPing()*1000).." ms"
+        if pl.Character then local h=pl.Character:FindFirstChildOfClass("Humanoid") if h then wH.Text=math.floor(h.Health).."/"..math.floor(h.MaxHealth) end end
+        wPl.Text = #P:GetPlayers().."/"..P.MaxPlayers
+        local u=math.floor(tick()-stT) wU.Text=math.floor(u/60).."m "..(u%60).."s"
+        wEn.Text = #workspace:GetChildren().." obj"
+    end
 end)
 
--- BACKGROUND LOOPS (ANTI-KNOCKBACK & MOVEMENT)
-RS.Heartbeat:Connect(function(dt)
-local c = pl.Character 
-local h = c and c:FindFirstChildOfClass("Humanoid") 
-local hr = c and c:FindFirstChild("HumanoidRootPart")
+UIS.JumpRequest:Connect(function() if tg.infJump then local c=pl.Character local h=c and c:FindFirstChildOfClass("Humanoid") if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end end end)
 
-if h and hr and h.Health > 0 then
-if stt.ws > 16 then 
-local md = h.MoveDirection 
-if md.Magnitude > 0.1 then 
-hr.AssemblyLinearVelocity = Vector3.new(md.Unit.X * stt.ws, hr.AssemblyLinearVelocity.Y, md.Unit.Z * stt.ws) 
-end 
-end
-if stt.jp > 50 then h.UseJumpPower = true h.JumpPower = stt.jp end
+-- ================= BONG BÓNG ĐƠN GIẢN =================
+local orb=Instance.new("Frame",sg)
+orb.Size=UDim2.new(0,70,0,70) orb.Position=UDim2.new(0,30,0,100) orb.BackgroundColor3=C.PINK orb.BorderSizePixel=0
+Instance.new("UICorner",orb).CornerRadius=UDim.new(1,0)
+local orbStroke=Instance.new("UIStroke",orb) orbStroke.Color=Color3.new(1,1,1) orbStroke.Thickness=3
+local orbImg=Instance.new("ImageLabel",orb)
+orbImg.Size=UDim2.new(1,-6,1,-6) orbImg.Position=UDim2.new(0.5,0,0.5,0) orbImg.AnchorPoint=Vector2.new(0.5,0.5) orbImg.BackgroundTransparency=1 orbImg.Image="rbxthumb://type=Asset&id=82041614098010&w=150&h=150"
+Instance.new("UICorner",orbImg).CornerRadius=UDim.new(1,0)
 
-if h:GetState() == Enum.HumanoidStateType.FallingDown or h:GetState() == Enum.HumanoidStateType.Ragdoll then 
-h.PlatformStand = false 
-h:ChangeState(Enum.HumanoidStateType.GetUp) 
-end
+local drOrb=false local obX,obY=30,100 local dsPos,sOrb
+orb.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drOrb=true dsPos=i.Position obX=orb.Position.X.Offset obY=orb.Position.Y.Offset sOrb=Vector2.new(obX,obY) end end)
+UIS.InputChanged:Connect(function(i) if drOrb and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then local d=i.Position-dsPos orb.Position=UDim2.new(0,sOrb.X+d.X,0,sOrb.Y+d.Y) end end)
+orb.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then if (i.Position-dsPos).Magnitude<5 then main.Visible=not main.Visible end drOrb=false end end)
 
-if spinState.on then 
-spinAccum = spinAccum + math.rad(spinState.speed * 360) * 0.016 
-hr.CFrame = CFrame.new(hr.Position) * CFrame.Angles(0, spinAccum, 0) 
-end
-
-if ghostDeath.on then h.Health = 0 end
-
-if ghostFeet.on and ghostFeet.baseY then
-local minY = math.max(ghostFeet.baseY + ghostFeet.height, workspace.FallenPartsDestroyHeight + 50)
-if hr.Position.Y < minY then 
-hr.CFrame = CFrame.new(hr.Position.X, minY, hr.Position.Z) 
-hr.AssemblyLinearVelocity = Vector3.zero 
-end
-end
-end
-end)
-
-RS.Stepped:Connect(function()
-if tg.noclip and pl.Character then 
-for _, p in ipairs(pl.Character:GetDescendants()) do 
-if p:IsA("BasePart") then p.CanCollide = false end 
-end 
-end
-end)
-
-RS.Heartbeat:Connect(function(dt)
-if autoFlyState.on then
-local myChar = pl.Character 
-local myHR = myChar and myChar:FindFirstChild("HumanoidRootPart") 
-local myH = myChar and myChar:FindFirstChildOfClass("Humanoid")
-if myHR and myH then
-local closestP = nil
-local minDist = 99999
-for _, p in ipairs(P:GetPlayers()) do
-if p ~= pl and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-local dist = (p.Character.HumanoidRootPart.Position - myHR.Position).Magnitude
-if dist < minDist then
-minDist = dist
-closestP = p.Character.HumanoidRootPart
-end
-end
-end
-if closestP then
-myH.PlatformStand = true
-local desired = closestP.Position + Vector3.new(0, 4, 0)
-local newPos = myHR.Position:Lerp(desired, 1 - math.exp(-autoFlyState.stiffness * dt))
-myHR.CFrame = CFrame.lookAt(newPos, closestP.Position)
-myHR.AssemblyLinearVelocity = Vector3.zero
-end
-end
-end
-end)
-
-print("[NEKO HUB] Loaded Successfully!")
-end)
-
-if not ok then
-warn("[NEKO UI/INIT ERROR] " .. tostring(err))
-end
+swT("Movement")
+print("NEKO LOADED - SIMPLE")
