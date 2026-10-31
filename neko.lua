@@ -23,9 +23,17 @@ local GREEN = Color3.fromRGB(0, 255, 150)
 local YEL = Color3.fromRGB(255, 200, 80)
 
 local gp
-pcall(function() gp = gethui and gethui() end)
-if not gp then pcall(function() gp = game:GetService("CoreGui") end) end
-if not gp then gp = pl:WaitForChild("PlayerGui") end
+-- Prefer the executor's private UI container when available.
+if type(gethui) == "function" then
+    local huiOK, hui = pcall(gethui)
+    if huiOK and hui then gp = hui end
+end
+-- PlayerGui is the supported fallback for ordinary client LocalScripts.
+if not gp and pl then
+    local guiOK, playerGui = pcall(function() return pl:WaitForChild("PlayerGui", 10) end)
+    if guiOK then gp = playerGui end
+end
+assert(gp, "Không tìm thấy UI container. Hãy chạy script ở client.")
 
 pcall(function()
 if gp:FindFirstChild("NekoModern") then gp.NekoModern:Destroy() end
@@ -237,6 +245,7 @@ tIcon.Text = "⚡"
 tIcon.Font = Enum.Font.GothamBold
 tIcon.TextSize = 22
 tIcon.TextColor3 = ACCENT
+tIcon.ZIndex = 501
 
 local main = Instance.new("Frame", sg)
 main.Size = UDim2.new(0, 480, 0, 360)
@@ -247,8 +256,8 @@ main.Active = true
 main.Visible = false
 main.ZIndex = 100
 main.AnchorPoint = Vector2.new(0.5, 0.5)
+main.Position = UDim2.fromScale(0.5, 0.5)
 
--- Scale the fixed-layout panel to fit smaller phones/tablets without clipping.
 local mainScale = Instance.new("UIScale")
 mainScale.Scale = 1
 mainScale.Parent = main
@@ -482,7 +491,8 @@ hit.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Mous
 UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drag = false end end)
 UIS.InputChanged:Connect(function(i)
 if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-local width = bar.AbsoluteSize.X\nlocal p = width > 0 and math.clamp((i.Position.X - bar.AbsolutePosition.X) / width, 0, 1) or 0
+local width = bar.AbsoluteSize.X
+local p = width > 0 and math.clamp((i.Position.X - bar.AbsolutePosition.X) / width, 0, 1) or 0
 fill.Size = UDim2.new(p, 0, 1, 0)
 local val = math.floor(min + (max - min) * p)
 lbl.Text = text .. ": " .. val
@@ -794,29 +804,9 @@ end
 end
 end)
 
--- GLOBAL Z-ORDER REPAIR:
--- In Global mode, Roblox does not automatically keep descendants above parents.
--- Assign increasing depth-based ZIndex values so panels never cover their own controls.
-local function applyZOrder(root, parentZ)
-    for _, child in ipairs(root:GetChildren()) do
-        if child:IsA("GuiObject") then
-            child.ZIndex = parentZ + 1
-            applyZOrder(child, child.ZIndex)
-        else
-            -- Layouts and constraints are not GuiObjects, but may contain no visual layer.
-            applyZOrder(child, parentZ)
-        end
-    end
-end
-main.ZIndex = 100
-applyZOrder(main, main.ZIndex)
-toggleBtn.ZIndex = 500
-applyZOrder(toggleBtn, toggleBtn.ZIndex)
-
--- Re-apply after viewport changes in case another UI layer altered the root ordering.
 print("[NEKO HUB] Loaded Successfully!")
 end)
 
 if not ok then
-warn("[NEKO ERROR] " .. tostring(err))
+warn("[NEKO UI/INIT ERROR] " .. tostring(err))
 end
