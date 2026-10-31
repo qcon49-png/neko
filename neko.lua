@@ -246,6 +246,32 @@ main.BorderSizePixel = 0
 main.Active = true
 main.Visible = false
 main.ZIndex = 100
+main.AnchorPoint = Vector2.new(0.5, 0.5)
+
+-- Scale the fixed-layout panel to fit smaller phones/tablets without clipping.
+local mainScale = Instance.new("UIScale")
+mainScale.Scale = 1
+mainScale.Parent = main
+local function updateMainScale()
+    local currentCamera = workspace.CurrentCamera
+    if not currentCamera then return end
+    local viewport = currentCamera.ViewportSize
+    local sx = math.max(0.65, (viewport.X - 24) / 480)
+    local sy = math.max(0.65, (viewport.Y - 24) / 360)
+    mainScale.Scale = math.min(1, sx, sy)
+    main.Position = UDim2.fromScale(0.5, 0.5)
+end
+updateMainScale()
+if workspace.CurrentCamera then
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateMainScale)
+end
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    task.defer(updateMainScale)
+    local currentCamera = workspace.CurrentCamera
+    if currentCamera then
+        currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateMainScale)
+    end
+end)
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
 
 local mainStroke = Instance.new("UIStroke", main)
@@ -456,7 +482,7 @@ hit.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Mous
 UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drag = false end end)
 UIS.InputChanged:Connect(function(i)
 if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-local p = math.clamp((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+local width = bar.AbsoluteSize.X\nlocal p = width > 0 and math.clamp((i.Position.X - bar.AbsolutePosition.X) / width, 0, 1) or 0
 fill.Size = UDim2.new(p, 0, 1, 0)
 local val = math.floor(min + (max - min) * p)
 lbl.Text = text .. ": " .. val
@@ -768,6 +794,26 @@ end
 end
 end)
 
+-- GLOBAL Z-ORDER REPAIR:
+-- In Global mode, Roblox does not automatically keep descendants above parents.
+-- Assign increasing depth-based ZIndex values so panels never cover their own controls.
+local function applyZOrder(root, parentZ)
+    for _, child in ipairs(root:GetChildren()) do
+        if child:IsA("GuiObject") then
+            child.ZIndex = parentZ + 1
+            applyZOrder(child, child.ZIndex)
+        else
+            -- Layouts and constraints are not GuiObjects, but may contain no visual layer.
+            applyZOrder(child, parentZ)
+        end
+    end
+end
+main.ZIndex = 100
+applyZOrder(main, main.ZIndex)
+toggleBtn.ZIndex = 500
+applyZOrder(toggleBtn, toggleBtn.ZIndex)
+
+-- Re-apply after viewport changes in case another UI layer altered the root ordering.
 print("[NEKO HUB] Loaded Successfully!")
 end)
 
