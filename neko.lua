@@ -60,7 +60,7 @@ local spinState = {on = false, speed = 5}
 local ghostFeet = {on = false, height = 0, baseY = nil}
 local autoFlyState = {on = false, stiffness = 50}
 local spinAccum = 0
-local aimRadius = 20 -- Mặc định vùng aim 20m
+local aimRadius = 20
 local aimlockOn = false
 local Target = nil
 
@@ -77,7 +77,7 @@ local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
 if not myHrp then Target = nil return end
 
 local closestTarget = nil
-local shortestDistance = aimRadius * 3.57 -- Đổi ra studs (~3.57 studs = 1 mét)
+local shortestDistance = aimRadius * 3.57
 
 for _, player in ipairs(P:GetPlayers()) do
 if player ~= pl and player.Character then
@@ -99,7 +99,7 @@ cam.CFrame = CFrame.new(cam.CFrame.Position, Target.Position)
 end
 end)
 
--- COMBINED ESP (GỘP TÊN, KHOẢNG CÁCH, MÁU THÀNH 2 CỘT)
+-- COMBINED ESP (2 COLUMNS)
 local espTable = {}
 RS.RenderStepped:Connect(function()
 for p, data in pairs(espTable) do
@@ -120,7 +120,6 @@ data.bb.Size = UDim2.new(0, 140, 0, 40)
 data.bb.StudsOffset = Vector3.new(0, 2.8, 0)
 data.bb.AlwaysOnTop = true
 
--- Khung chứa 2 cột
 data.mainF = Instance.new("Frame", data.bb)
 data.mainF.Size = UDim2.new(1, 0, 1, 0)
 data.mainF.BackgroundTransparency = 0.4
@@ -130,7 +129,6 @@ local stroke = Instance.new("UIStroke", data.mainF)
 stroke.Color = ACCENT
 stroke.Thickness = 1
 
--- Cột 1: Tên & Khoảng cách
 data.txtCol = Instance.new("TextLabel", data.mainF)
 data.txtCol.Size = UDim2.new(1, 0, 0.5, 0)
 data.txtCol.Position = UDim2.new(0, 0, 0, 2)
@@ -140,7 +138,6 @@ data.txtCol.Font = Enum.Font.GothamBold
 data.txtCol.TextSize = 11
 data.txtCol.TextXAlignment = Enum.TextXAlignment.Center
 
--- Cột 2: Thanh Máu & %
 data.hpBg = Instance.new("Frame", data.mainF)
 data.hpBg.Size = UDim2.new(0.8, 0, 0, 8)
 data.hpBg.Position = UDim2.new(0.1, 0, 0.65, 0)
@@ -179,7 +176,7 @@ end
 end
 end)
 
--- WAYPOINTS SYSTEM (CỐ ĐỊNH 5 Ô)
+-- WAYPOINTS SYSTEM (5 SLOTS)
 local hfa = (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil)
 local WPF = "NekoWPs_5_" .. tostring(game.PlaceId) .. ".json"
 local wps = {nil, nil, nil, nil, nil}
@@ -285,7 +282,6 @@ closeBtn.AutoButtonColor = false
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
 closeBtn.MouseButton1Click:Connect(function() playSnd() main.Visible = false end)
 
--- Dragging Logic
 local dragging, dragStart, startPos = false, nil, nil
 topBar.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = true dragStart = i.Position startPos = main.Position end end)
 UIS.InputChanged:Connect(function(i) if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then local d = i.Position - dragStart main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y) end end)
@@ -511,7 +507,7 @@ mkSec(plPage, "UTILITIES")
 mkBtn(plPage, "Reset Character", function() if pl.Character then pl.Character:BreakJoints() end end)
 mkBtn(plPage, "Rejoin Server", function() TS:Teleport(game.PlaceId, pl) end)
 
--- TELEPORT PAGE (ĐÃ BỎ DỊCH CHUYỂN THEO NGƯỜI CHỌN, GIỮ AUTO FLY)
+-- TELEPORT PAGE
 local telePage = pages["TELE"]
 mkSec(telePage, "AUTO FLY (CLOSEST TARGET)")
 mkTog(telePage, "Auto Fly (Follow Closest)", false, function(s) autoFlyState.on = s end)
@@ -574,13 +570,13 @@ Instance.new("UICorner", xB).CornerRadius = UDim.new(0, 6)
 xB.MouseButton1Click:Connect(function() wps[i] = nil saveWPs() info.Text = "Waypoint " .. i info.TextColor3 = TXT_DIM end)
 end
 
--- AIMBOT PAGE (AIM AUTO 360, GẦN NHẤT, THANH CHỈNH KHOẢNG CÁCH 5-50M)
+-- AIMBOT PAGE
 local aimPage = pages["AIM"]
 mkSec(aimPage, "AUTO 360 AIMBOT (CLOSEST)")
 mkTog(aimPage, "Aimlock Auto (360°)", false, function(s) aimlockOn = s end)
 mkSli(aimPage, "Aim Range (Meters)", 5, 50, 20, function(v) aimRadius = v end)
 
--- INFO PAGE (SIÊU CHI TIẾT: PING, NHIỆT ĐỘ, FPS, RAM, V.V.)
+-- INFO PAGE
 local infoPage = pages["INFO"]
 local function mkCard(titleText, accent)
 local card = Instance.new("Frame", infoPage)
@@ -673,7 +669,6 @@ local stTxt, stCol = "STABLE", GREEN
 if ping > 150 then stTxt, stCol = "MODERATE", YEL end
 if ping > 250 then stTxt, stCol = "POOR", RED end
 
--- Giả lập nhiệt độ thiết bị dựa trên tải FPS & RAM
 local devTemp = math.floor(36 + (f < 30 and 4 or 1) + math.random(1, 3))
 
 pcall(function()
@@ -700,7 +695,7 @@ end)
 end
 end)
 
--- BACKGROUND LOOPS (ANTI-KNOCKBACK CHẠY NGẦM KHÔNG CẦN BẬT TẮT)
+-- BACKGROUND LOOPS (ANTI-KNOCKBACK & MOVEMENT)
 RS.Heartbeat:Connect(function(dt)
 local c = pl.Character 
 local h = c and c:FindFirstChildOfClass("Humanoid") 
@@ -715,7 +710,6 @@ end
 end
 if stt.jp > 50 then h.UseJumpPower = true h.JumpPower = stt.jp end
 
--- Chống ngã / văng (Anti-Knockback chạy ngầm ẩn)
 if h:GetState() == Enum.HumanoidStateType.FallingDown or h:GetState() == Enum.HumanoidStateType.Ragdoll then 
 h.PlatformStand = false 
 h:ChangeState(Enum.HumanoidStateType.GetUp) 
@@ -746,7 +740,6 @@ end
 end
 end)
 
--- AUTO FLY HỖ TRỢ BÁM THEO MỤC TIÊU GẦN NHẤT
 RS.Heartbeat:Connect(function(dt)
 if autoFlyState.on then
 local myChar = pl.Character 
@@ -775,7 +768,7 @@ end
 end
 end)
 
-print("[NEKO HUB] Successfully Loaded All Fixes & Upgrades!")
+print("[NEKO HUB] Loaded Successfully!")
 end)
 
 if not ok then
