@@ -23,17 +23,9 @@ local GREEN = Color3.fromRGB(0, 255, 150)
 local YEL = Color3.fromRGB(255, 200, 80)
 
 local gp
--- Prefer the executor's private UI container when available.
-if type(gethui) == "function" then
-    local huiOK, hui = pcall(gethui)
-    if huiOK and hui then gp = hui end
-end
--- PlayerGui is the supported fallback for ordinary client LocalScripts.
-if not gp and pl then
-    local guiOK, playerGui = pcall(function() return pl:WaitForChild("PlayerGui", 10) end)
-    if guiOK then gp = playerGui end
-end
-assert(gp, "Không tìm thấy UI container. Hãy chạy script ở client.")
+pcall(function() gp = gethui and gethui() end)
+if not gp then pcall(function() gp = game:GetService("CoreGui") end) end
+if not gp then gp = pl:WaitForChild("PlayerGui") end
 
 pcall(function()
 if gp:FindFirstChild("NekoModern") then gp.NekoModern:Destroy() end
@@ -41,9 +33,6 @@ if gp:FindFirstChild("NekoESP") then gp.NekoESP:Destroy() end
 end)
 
 local sg = Instance.new("ScreenGui")
--- Keep each GuiObject layered relative to its siblings. In Global mode,
--- the main frame ZIndex (100) can cover descendants left at ZIndex 1.
-sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 sg.Name = "NekoModern"
 sg.ResetOnSpawn = false
 sg.IgnoreGuiInset = true
@@ -248,7 +237,6 @@ tIcon.Text = "⚡"
 tIcon.Font = Enum.Font.GothamBold
 tIcon.TextSize = 22
 tIcon.TextColor3 = ACCENT
-tIcon.ZIndex = 501
 
 local main = Instance.new("Frame", sg)
 main.Size = UDim2.new(0, 480, 0, 360)
@@ -258,32 +246,6 @@ main.BorderSizePixel = 0
 main.Active = true
 main.Visible = false
 main.ZIndex = 100
-main.AnchorPoint = Vector2.new(0.5, 0.5)
-main.Position = UDim2.fromScale(0.5, 0.5)
-
-local mainScale = Instance.new("UIScale")
-mainScale.Scale = 1
-mainScale.Parent = main
-local function updateMainScale()
-    local currentCamera = workspace.CurrentCamera
-    if not currentCamera then return end
-    local viewport = currentCamera.ViewportSize
-    local sx = math.max(0.65, (viewport.X - 24) / 480)
-    local sy = math.max(0.65, (viewport.Y - 24) / 360)
-    mainScale.Scale = math.min(1, sx, sy)
-    main.Position = UDim2.fromScale(0.5, 0.5)
-end
-updateMainScale()
-if workspace.CurrentCamera then
-    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateMainScale)
-end
-workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    task.defer(updateMainScale)
-    local currentCamera = workspace.CurrentCamera
-    if currentCamera then
-        currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateMainScale)
-    end
-end)
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
 
 local mainStroke = Instance.new("UIStroke", main)
@@ -494,8 +456,7 @@ hit.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Mous
 UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drag = false end end)
 UIS.InputChanged:Connect(function(i)
 if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-local width = bar.AbsoluteSize.X
-local p = width > 0 and math.clamp((i.Position.X - bar.AbsolutePosition.X) / width, 0, 1) or 0
+local p = math.clamp((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
 fill.Size = UDim2.new(p, 0, 1, 0)
 local val = math.floor(min + (max - min) * p)
 lbl.Text = text .. ": " .. val
@@ -811,5 +772,5 @@ print("[NEKO HUB] Loaded Successfully!")
 end)
 
 if not ok then
-warn("[NEKO UI/INIT ERROR] " .. tostring(err))
+warn("[NEKO ERROR] " .. tostring(err))
 end
