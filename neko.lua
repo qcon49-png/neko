@@ -40,11 +40,36 @@ local spinState = {on = false, speed = 5}
 local autoFlyStiffness = 50
 local selectedFlyTarget = nil
 local flyWasEnabled = false
+local flyAttachment = nil
+local flyAlignPosition = nil
 local spinAccum = 0
 
 -- ESP System (2D Box / Rainbow Tracer / Name + Distance)
 local espTable = {}
 local espFlags = {line = false, box = false, info = false}
+
+-- Bộ đếm ESP nhỏ ở góc trái dưới, tự căn theo độ phân giải điện thoại.
+local espCounter = Instance.new("TextLabel")
+espCounter.Name = "ESP_PlayerCounter"
+espCounter.Size = UDim2.fromOffset(104, 25)
+espCounter.AnchorPoint = Vector2.new(0, 1)
+espCounter.Position = UDim2.new(0, 9, 1, -9)
+espCounter.BackgroundColor3 = BG_MAIN
+espCounter.BackgroundTransparency = 0.12
+espCounter.BorderSizePixel = 0
+espCounter.Text = "ESP  0 PLAYERS"
+espCounter.TextColor3 = ACCENT
+espCounter.Font = Enum.Font.GothamBold
+espCounter.TextSize = 10
+espCounter.Visible = false
+espCounter.ZIndex = 90
+espCounter.Parent = sg
+Instance.new("UICorner", espCounter).CornerRadius = UDim.new(0, 6)
+local espCounterStroke = Instance.new("UIStroke", espCounter)
+espCounterStroke.Color = ACCENT
+espCounterStroke.Thickness = 1
+espCounterStroke.Transparency = 0.25
+
 local function makeESPObject(player)
     local data = {}
     local function frame(parent, color, thickness)
@@ -85,9 +110,15 @@ local function hideESP(data)
 end
 
 RS.RenderStepped:Connect(function()
+    cam = workspace.CurrentCamera or cam
+    if not cam then return end
     local myChar = pl.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local viewport = cam.ViewportSize
+    local visiblePlayerCount = 0
+    local espEnabled = espFlags.line or espFlags.box or espFlags.info
+    espCounter.Visible = espEnabled
+    espCounter.Position = UDim2.new(0, 9, 1, -9)
     -- Điểm gốc cố định ở giữa cạnh dưới màn hình, nhích lên để tránh sát mép.
     local bottom = Vector2.new(viewport.X * 0.5, viewport.Y * 0.88)
     local hue = (os.clock() * 0.22) % 1
@@ -105,6 +136,7 @@ RS.RenderStepped:Connect(function()
             if not onScreen then
                 hideESP(data)
             else
+                visiblePlayerCount = visiblePlayerCount + 1
                 local cf, size = char:GetBoundingBox()
                 local minX, minY = math.huge, math.huge
                 local maxX, maxY = -math.huge, -math.huge
@@ -156,6 +188,13 @@ RS.RenderStepped:Connect(function()
                 else data.label.Visible = false end
             end
         end
+    end
+
+    if espEnabled then
+        espCounter.Text = "ESP  " .. tostring(visiblePlayerCount) .. " PLAYERS"
+        espCounter.Visible = true
+    else
+        espCounter.Visible = false
     end
 end)
 
@@ -224,36 +263,70 @@ RS.Heartbeat:Connect(function(dt)
         end
     end
     
-    -- Auto Fly: follow đúng người chơi đã chọn, không khóa PlatformStand.
+    -- Auto Fly: bám mục tiêu bằng AlignPosition có giới hạn tốc độ,
+    -- tránh CFrame teleport từng frame gây giật và văng xa khi tắt.
     if tg.autoFly then
         local myHR = c and c:FindFirstChild("HumanoidRootPart")
-        local targetChar = selectedFlyTarget and selectedFlyTarget.Character
-        local targetHR = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-        local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
-
-        if myHR and h and h.Health > 0 and targetHR and targetHum and targetHum.Health > 0 then
-            flyWasEnabled = true
-            local desired = targetHR.Position + Vector3.new(0, 4, 0)
-            local alpha = 1 - math.exp(-math.clamp(autoFlyStiffness, 10, 120) * dt)
-            local newPos = myHR.Position:Lerp(desired, alpha)
-            myHR.CFrame = CFrame.lookAt(newPos, targetHR.Position)
-            -- Không ghi đè vận tốc về zero và không bật PlatformStand,
-            -- tránh nhân vật bị kẹt/ngập đất khi tắt Auto Fly.
+        local targetHR, targetHum
+        if selectedFlyTarget and selectedFlyTarget:IsA("Player") then
+            local targetChar = selectedFlyTarget.Character
+            targetHR = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+            targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+        elseif selectedFlyTarget and selectedFlyTarget:IsA("Model") then
+            targetHR = selectedFlyTarget.PrimaryPart or selectedFlyTarget:FindFirstChild("HumanoidRootPart") or selectedFlyTarget:FindFirstChildWhichIsA("BasePart", true)
+            targetHum = selectedFlyTarget:FindFirstChildOfClass("Humanoid")
+        elseif selectedFlyTarget and selectedFlyTarget:IsA("BasePart") then
+            targetHR = selectedFlyTarget
         end
-    elseif flyWasEnabled then
+
+        if myHR and h and h.Health > 0 and targetHR and (not targetHum or targetHum.Health > 0) then
+            if not flyAttachment or flyAttachment.Parent ~= myHR then
+                if flyAlignPosition then flyAlignPosition:Destroy() end
+                if flyAttachment then flyAttachment:Destroy() end
+
+                flyAttachment = Instance.new("Attachment")
+                flyAttachment.Name = "NekoFlyAttachment"
+                flyAttachment.Parent = myHR
+
+                flyAlignPosition = Instance.new("AlignPosition")
+                flyAlignPosition.Name = "NekoFlyFollow"
+                flyAlignPosition.Mode = Enum.PositionAlignmentMode.OneAttachment
+                flyAlignPosition.Attachment0 = flyAttachment
+                flyAlignPosition.ApplyAtCenterOfMass = true
+                flyAlignPosition.RigidityEnabled = false
+                flyAlignPosition.MaxForce = math.max(myHR.AssemblyMass * workspace.Gravity * 10, 50000)
+                flyAlignPosition.MaxVelocity = 34
+                flyAlignPosition.Responsiveness = math.clamp(autoFlyStiffness * 0.45, 8, 42)
+                flyAlignPosition.Parent = myHR
+            end
+
+            flyWasEnabled = true
+            flyAlignPosition.Position = targetHR.Position + Vector3.new(0, 4, 0)
+            flyAlignPosition.Responsiveness = math.clamp(autoFlyStiffness * 0.45, 8, 42)
+        else
+            -- Mục tiêu mất kết nối/chết: tháo lực điều khiển, không để lực cũ kéo nhân vật.
+            if flyAlignPosition then flyAlignPosition:Destroy(); flyAlignPosition = nil end
+            if flyAttachment then flyAttachment:Destroy(); flyAttachment = nil end
+            if flyWasEnabled and myHR then myHR.AssemblyLinearVelocity = Vector3.zero end
+            flyWasEnabled = false
+        end
+    elseif flyWasEnabled or flyAlignPosition or flyAttachment then
         flyWasEnabled = false
+        if flyAlignPosition then flyAlignPosition:Destroy(); flyAlignPosition = nil end
+        if flyAttachment then flyAttachment:Destroy(); flyAttachment = nil end
+
         local char = pl.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         local root = char and char:FindFirstChild("HumanoidRootPart")
+        if root then
+            -- Xóa toàn bộ quán tính do Auto Fly tạo ra để không bị phóng văng.
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
         if hum then
             hum.PlatformStand = false
             hum.Sit = false
             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        end
-        if root then
-            -- Chỉ bỏ vận tốc rơi dọc còn sót lại, giữ điều khiển ngang tự nhiên.
-            local v = root.AssemblyLinearVelocity
-            root.AssemblyLinearVelocity = Vector3.new(v.X, math.max(v.Y, 0), v.Z)
         end
     end
 end)
@@ -285,10 +358,22 @@ mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local mainScale = Instance.new("UIScale", main)
 local function updateMenuScale()
-    local v = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(900, 700)
-    mainScale.Scale = math.clamp(math.min((v.X - 20) / 760, (v.Y - 20) / 390), 0.48, 1)
+    local currentCamera = workspace.CurrentCamera
+    local v = currentCamera and currentCamera.ViewportSize or Vector2.new(900, 700)
+    -- Vivo V2025 portrait/landscape: giữ menu trọn trong vùng hiển thị.
+    local scaleX = (v.X - 20) / 760
+    local scaleY = (v.Y - 28) / 390
+    mainScale.Scale = math.clamp(math.min(scaleX, scaleY, 1), 0.38, 1)
+    main.Position = UDim2.fromScale(0.5, 0.5)
 end
 updateMenuScale()
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    updateMenuScale()
+    local currentCamera = workspace.CurrentCamera
+    if currentCamera then
+        currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateMenuScale)
+    end
+end)
 if workspace.CurrentCamera then
     workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateMenuScale)
 end
@@ -572,31 +657,132 @@ mkBtn(plPage, "Rejoin Server", function() TS:Teleport(game.PlaceId, pl) end)
 local telePage = pages["TELE"]
 mkSec(telePage, "AUTO FLY  /  FOLLOW TARGET")
 
-local targetPicker = mkBtn(telePage, "Người chơi: Chưa chọn  •  Nhấn để chọn", function(btn)
-    local candidates = {}
-    for _, player in ipairs(P:GetPlayers()) do
-        if player ~= pl and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            table.insert(candidates, player)
+-- Danh sách mục tiêu trong map dùng chung cho Teleport và Auto Fly.
+local selectedTargetLabel = Instance.new("TextLabel", telePage)
+selectedTargetLabel.Size = UDim2.new(1, -8, 0, 24)
+selectedTargetLabel.BackgroundTransparency = 1
+selectedTargetLabel.Text = "MỤC TIÊU: CHƯA CHỌN"
+selectedTargetLabel.TextColor3 = ACCENT
+selectedTargetLabel.Font = Enum.Font.GothamBold
+selectedTargetLabel.TextSize = 11
+selectedTargetLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local targetScroll = Instance.new("ScrollingFrame", telePage)
+targetScroll.Name = "MapTargetList"
+targetScroll.Size = UDim2.new(1, -8, 0, 150)
+targetScroll.BackgroundColor3 = BG_CARD
+targetScroll.BorderSizePixel = 0
+targetScroll.ScrollBarThickness = 3
+targetScroll.ScrollBarImageColor3 = ACCENT
+targetScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+targetScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+targetScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+Instance.new("UICorner", targetScroll).CornerRadius = UDim.new(0, 7)
+local targetListLayout = Instance.new("UIListLayout", targetScroll)
+targetListLayout.Padding = UDim.new(0, 3)
+targetListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+local targetListPadding = Instance.new("UIPadding", targetScroll)
+targetListPadding.PaddingTop = UDim.new(0, 4)
+targetListPadding.PaddingBottom = UDim.new(0, 4)
+targetListPadding.PaddingLeft = UDim.new(0, 4)
+targetListPadding.PaddingRight = UDim.new(0, 4)
+
+local function getMapTargetRoot(target)
+    if not target or not target.Parent then return nil end
+    if target:IsA("Player") then
+        local ch = target.Character
+        return ch and ch:FindFirstChild("HumanoidRootPart")
+    elseif target:IsA("Model") then
+        return target.PrimaryPart or target:FindFirstChild("HumanoidRootPart") or target:FindFirstChildWhichIsA("BasePart", true)
+    elseif target:IsA("BasePart") then
+        return target
+    end
+    return nil
+end
+
+local function getMapTargetName(target)
+    if target:IsA("Player") then return target.DisplayName end
+    return target.Name
+end
+
+local function refreshMapTargets()
+    for _, child in ipairs(targetScroll:GetChildren()) do
+        if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
+    end
+
+    local myRoot = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+    local found, seen = {}, {}
+    for _, item in ipairs(workspace:GetDescendants()) do
+        local candidate
+        if item:IsA("Model") and not item:FindFirstChildOfClass("Humanoid") then
+            candidate = item
+        elseif item:IsA("BasePart") and item.Parent and not item.Parent:IsA("Model") then
+            candidate = item
+        end
+
+        if candidate and not seen[candidate] then
+            local root = getMapTargetRoot(candidate)
+            if root and not (pl.Character and candidate == pl.Character) then
+                local distance = myRoot and (root.Position - myRoot.Position).Magnitude or math.huge
+                table.insert(found, {instance = candidate, distance = distance})
+                seen[candidate] = true
+            end
         end
     end
-    table.sort(candidates, function(a, b) return a.Name:lower() < b.Name:lower() end)
 
-    if #candidates == 0 then
-        selectedFlyTarget = nil
-        btn.Text = "   Không tìm thấy người chơi hợp lệ"
-        return
+    table.sort(found, function(a, b) return a.distance < b.distance end)
+    for index, entry in ipairs(found) do
+        if index > 100 then break end
+        local item = entry.instance
+        local row = Instance.new("TextButton", targetScroll)
+        row.Name = "Target_" .. tostring(index)
+        row.Size = UDim2.new(1, -4, 0, 30)
+        row.BackgroundColor3 = item == selectedFlyTarget and BG_SEC or BG_MAIN
+        row.BorderSizePixel = 0
+        row.AutoButtonColor = true
+        row.Text = string.format("  %s   •   %.1f studs", getMapTargetName(item), entry.distance)
+        row.TextColor3 = item == selectedFlyTarget and GREEN or TXT
+        row.TextXAlignment = Enum.TextXAlignment.Left
+        row.Font = Enum.Font.GothamMedium
+        row.TextSize = 10
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+        row.MouseButton1Click:Connect(function()
+            selectedFlyTarget = item
+            selectedTargetLabel.Text = "MỤC TIÊU: " .. getMapTargetName(item)
+            selectedTargetLabel.TextColor3 = GREEN
+            for _, other in ipairs(targetScroll:GetChildren()) do
+                if other:IsA("TextButton") then
+                    other.BackgroundColor3 = other == row and BG_SEC or BG_MAIN
+                    other.TextColor3 = other == row and GREEN or TXT
+                end
+            end
+        end)
     end
 
-    local currentIndex = 0
-    for i, player in ipairs(candidates) do
-        if player == selectedFlyTarget then currentIndex = i break end
+    if #found == 0 then
+        local empty = Instance.new("TextLabel", targetScroll)
+        empty.Size = UDim2.new(1, -4, 0, 30)
+        empty.BackgroundTransparency = 1
+        empty.Text = "Không tìm thấy mục tiêu trong map"
+        empty.TextColor3 = TXT_DIM
+        empty.Font = Enum.Font.Gotham
+        empty.TextSize = 10
     end
-    currentIndex = (currentIndex % #candidates) + 1
-    selectedFlyTarget = candidates[currentIndex]
-    btn.Text = "   Đang theo: " .. selectedFlyTarget.DisplayName .. "  •  Nhấn để đổi"
+end
+
+mkBtn(telePage, "↻  Làm mới danh sách mục tiêu", refreshMapTargets)
+mkBtn(telePage, "TELEPORT  →  Mục tiêu đã chọn", function(btn)
+    local targetRoot = getMapTargetRoot(selectedFlyTarget)
+    local myRoot = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+    if targetRoot and myRoot then
+        myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 4)
+    else
+        btn.Text = "   Hãy chọn mục tiêu hợp lệ trước"
+    end
 end)
+refreshMapTargets()
 
-mkTog(telePage, "Auto Fly  •  Bay theo người đã chọn", false, function(s)
+mkTog(telePage, "Auto Fly  •  Bay theo mục tiêu đã chọn", false, function(s)
     tg.autoFly = s
     if not s then
         local char = pl.Character
