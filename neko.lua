@@ -36,6 +36,10 @@ sg.Parent = gp
 
 local stt = {ws = 16, jp = 50}
 local tg = {esp = false, noclip = false, fps = false, infJump = false, aimlock = false, autoFly = false}
+local aimFovEnabled = false
+local aimFovVisible = false
+local aimFovRadius = 50
+local aimFovCircle
 local spinState = {on = false, speed = 5}
 local autoFlyStiffness = 50
 local selectedFlyTarget = nil
@@ -289,15 +293,24 @@ for _, player in ipairs(P:GetPlayers()) do
     if player ~= pl then makeESPObject(player) end
 end
 
--- Aimlock (Gần nhất & Vào đầu)
+-- Aimlock: chỉ chọn người chơi nằm trong vòng FOV cố định trên màn hình.
 RS.RenderStepped:Connect(function()
+    cam = workspace.CurrentCamera or cam
+    if aimFovCircle and cam then
+        local viewport = cam.ViewportSize
+        aimFovCircle.Position = UDim2.fromOffset(viewport.X * 0.5, viewport.Y * 0.5)
+        aimFovCircle.Size = UDim2.fromOffset(aimFovRadius * 2, aimFovRadius * 2)
+        aimFovCircle.Visible = aimFovEnabled and aimFovVisible
+    end
+
     if not tg.aimlock then return end
     local myChar = pl.Character
     local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myHrp then return end
+    if not myHrp or not cam then return end
 
+    local screenCenter = cam.ViewportSize * 0.5
     local closestHead = nil
-    local shortestDist = math.huge
+    local shortestScreenDist = math.huge
 
     for _, player in ipairs(P:GetPlayers()) do
         if player ~= pl and player.Character then
@@ -305,14 +318,19 @@ RS.RenderStepped:Connect(function()
             local humanoid = char:FindFirstChildOfClass("Humanoid")
             local head = char:FindFirstChild("Head")
             if humanoid and humanoid.Health > 0 and head then
-                local d = (head.Position - myHrp.Position).Magnitude
-                if d < shortestDist then
-                    shortestDist = d
-                    closestHead = head
+                local point, onScreen = cam:WorldToViewportPoint(head.Position)
+                if onScreen and point.Z > 0 then
+                    local screenDist = (Vector2.new(point.X, point.Y) - screenCenter).Magnitude
+                    local insideFov = (not aimFovEnabled) or screenDist <= aimFovRadius
+                    if insideFov and screenDist < shortestScreenDist then
+                        shortestScreenDist = screenDist
+                        closestHead = head
+                    end
                 end
             end
         end
     end
+
     if closestHead then
         cam.CFrame = CFrame.new(cam.CFrame.Position, closestHead.Position)
     end
@@ -340,8 +358,7 @@ RS.Heartbeat:Connect(function(dt)
         end
     end
     
-    -- Auto Fly: bám mục tiêu bằng AlignPosition có giới hạn tốc độ,
-    -- tránh CFrame teleport từng frame gây giật và văng xa khi tắt.
+    -- Auto Fly: dịch chuyển trực tiếp lên phía trên mục tiêu đã chọn.
     if tg.autoFly then
         local myHR = c and c:FindFirstChild("HumanoidRootPart")
         local targetHR, targetHum
@@ -357,53 +374,26 @@ RS.Heartbeat:Connect(function(dt)
         end
 
         if myHR and h and h.Health > 0 and targetHR and (not targetHum or targetHum.Health > 0) then
-            if not flyAttachment or flyAttachment.Parent ~= myHR then
-                if flyAlignPosition then flyAlignPosition:Destroy() end
-                if flyAttachment then flyAttachment:Destroy() end
-
-                flyAttachment = Instance.new("Attachment")
-                flyAttachment.Name = "NekoFlyAttachment"
-                flyAttachment.Parent = myHR
-
-                flyAlignPosition = Instance.new("AlignPosition")
-                flyAlignPosition.Name = "NekoFlyFollow"
-                flyAlignPosition.Mode = Enum.PositionAlignmentMode.OneAttachment
-                flyAlignPosition.Attachment0 = flyAttachment
-                flyAlignPosition.ApplyAtCenterOfMass = true
-                flyAlignPosition.RigidityEnabled = false
-                flyAlignPosition.MaxForce = math.max(myHR.AssemblyMass * workspace.Gravity * 10, 50000)
-                flyAlignPosition.MaxVelocity = 12
-                flyAlignPosition.Responsiveness = math.clamp(autoFlyStiffness * 0.30, 5, 24)
-                flyAlignPosition.Parent = myHR
-            end
-
             flyWasEnabled = true
-            flyAlignPosition.Position = targetHR.Position + Vector3.new(0, 1.8, 0)
-            flyAlignPosition.Responsiveness = math.clamp(autoFlyStiffness * 0.30, 5, 24)
+            myHR.CFrame = targetHR.CFrame * CFrame.new(0, 4, 0)
+            myHR.AssemblyLinearVelocity = Vector3.zero
+            myHR.AssemblyAngularVelocity = Vector3.zero
         else
-            -- Mục tiêu mất kết nối/chết: tháo lực điều khiển, không để lực cũ kéo nhân vật.
-            if flyAlignPosition then flyAlignPosition:Destroy(); flyAlignPosition = nil end
-            if flyAttachment then flyAttachment:Destroy(); flyAttachment = nil end
-            if flyWasEnabled and myHR then myHR.AssemblyLinearVelocity = Vector3.zero end
             flyWasEnabled = false
         end
     elseif flyWasEnabled or flyAlignPosition or flyAttachment then
         flyWasEnabled = false
         if flyAlignPosition then flyAlignPosition:Destroy(); flyAlignPosition = nil end
         if flyAttachment then flyAttachment:Destroy(); flyAttachment = nil end
-
-        local char = pl.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local root = c and c:FindFirstChild("HumanoidRootPart")
         if root then
-            -- Xóa toàn bộ quán tính do Auto Fly tạo ra để không bị phóng văng.
             root.AssemblyLinearVelocity = Vector3.zero
             root.AssemblyAngularVelocity = Vector3.zero
         end
-        if hum then
-            hum.PlatformStand = false
-            hum.Sit = false
-            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        if h then
+            h.PlatformStand = false
+            h.Sit = false
+            h:ChangeState(Enum.HumanoidStateType.GettingUp)
         end
     end
 end)
@@ -534,8 +524,8 @@ content.Size = UDim2.new(1, -190, 1, -68)
 content.Position = UDim2.new(0, 178, 0, 60)
 content.BackgroundTransparency = 1
 
-local tabs = {"MOVE", "ESP", "PLAYER", "TELE", "AIM", "INFO"}
-local tabLabels = {MOVE="  DI CHUYỂN", ESP="  ESP", PLAYER="  NHÂN VẬT", TELE="  DỊCH CHUYỂN", AIM="  AIM", INFO="  THÔNG TIN"}
+local tabs = {"MOVE", "ESP", "PLAYER", "TELE", "AIM", "KILLER", "INFO"}
+local tabLabels = {MOVE="  DI CHUYỂN", ESP="  ESP", PLAYER="  NHÂN VẬT", TELE="  DỊCH CHUYỂN", AIM="  AIM", KILLER="  KILLER", INFO="  THÔNG TIN"}
 local pages = {}
 
 local function switchTab(name)
@@ -731,7 +721,85 @@ mkSli(plPage, "Spin Speed", 1, 20, 5, function(v) spinState.speed = v end)
 mkTog(plPage, "Noclip", false, function(s) tg.noclip = s end)
 
 mkSec(plPage, "RENDER & UTILS")
-mkTog(plPage, "FPS Boost", false, function(s) tg.fps = s L.GlobalShadows = not s end)
+-- EXTREME FPS: aggressive but reversible local visual reduction.
+-- Every changed property is snapshotted once and restored when the toggle is disabled.
+local fpsSaved = setmetatable({}, {__mode = "k"})
+local fpsOldShadows = L.GlobalShadows
+local fpsOldEnvironment = {}
+local fpsDescendantConnection = nil
+local fpsApplying = false
+local function fpsRemember(obj, property)
+    if not obj or not obj.Parent then return end
+    fpsSaved[obj] = fpsSaved[obj] or {}
+    if fpsSaved[obj][property] == nil then
+        local okRead, oldValue = pcall(function() return obj[property] end)
+        if okRead then fpsSaved[obj][property] = oldValue end
+    end
+end
+local function fpsSet(obj, property, value)
+    fpsRemember(obj, property)
+    pcall(function() obj[property] = value end)
+end
+local function fpsOptimizeObject(obj)
+    if not tg.fps or not obj then return end
+    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
+        or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+        fpsSet(obj, "Enabled", false)
+    elseif obj:IsA("PostEffect") then
+        fpsSet(obj, "Enabled", false)
+    elseif obj:IsA("Decal") or obj:IsA("Texture") then
+        fpsSet(obj, "Transparency", 1)
+    elseif obj:IsA("BasePart") then
+        fpsSet(obj, "CastShadow", false)
+        fpsSet(obj, "Reflectance", 0)
+        -- Avoid changing collision, anchoring, size, or gameplay physics.
+        fpsSet(obj, "Material", Enum.Material.Plastic)
+    elseif obj:IsA("Atmosphere") then
+        fpsSet(obj, "Density", 0)
+        fpsSet(obj, "Haze", 0)
+        fpsSet(obj, "Glare", 0)
+    elseif obj:IsA("Clouds") then
+        fpsSet(obj, "Enabled", false)
+    end
+end
+local function setFPSBoost(enabled)
+    tg.fps = enabled
+    if enabled then
+        fpsOldShadows = L.GlobalShadows
+        fpsOldEnvironment = {
+            Brightness = L.Brightness,
+            FogEnd = L.FogEnd,
+            GlobalShadows = L.GlobalShadows,
+        }
+        L.GlobalShadows = false
+        L.FogEnd = 1000000
+        for _, obj in ipairs(game:GetDescendants()) do
+            fpsOptimizeObject(obj)
+        end
+        if fpsDescendantConnection then fpsDescendantConnection:Disconnect() end
+        fpsDescendantConnection = game.DescendantAdded:Connect(function(obj)
+            if tg.fps then fpsOptimizeObject(obj) end
+        end)
+    else
+        if fpsDescendantConnection then
+            fpsDescendantConnection:Disconnect()
+            fpsDescendantConnection = nil
+        end
+        for obj, properties in pairs(fpsSaved) do
+            if obj and obj.Parent then
+                for property, oldValue in pairs(properties) do
+                    pcall(function() obj[property] = oldValue end)
+                end
+            end
+        end
+        table.clear(fpsSaved)
+        if fpsOldEnvironment.Brightness ~= nil then L.Brightness = fpsOldEnvironment.Brightness end
+        if fpsOldEnvironment.FogEnd ~= nil then L.FogEnd = fpsOldEnvironment.FogEnd end
+        L.GlobalShadows = fpsOldEnvironment.GlobalShadows ~= nil and fpsOldEnvironment.GlobalShadows or fpsOldShadows
+        table.clear(fpsOldEnvironment)
+    end
+end
+mkTog(plPage, "EXTREME FPS  •  Giảm tải hình ảnh tối đa", false, setFPSBoost)
 mkSli(plPage, "Camera FOV", 70, 120, 70, function(v) cam.FieldOfView = v end)
 mkBtn(plPage, "Reset Character", function() if pl.Character then pl.Character:BreakJoints() end end)
 mkBtn(plPage, "Rejoin Server", function() TS:Teleport(game.PlaceId, pl) end)
@@ -868,7 +936,7 @@ mkBtn(telePage, "TELEPORT  →  NGƯỜI CHƠI ĐÃ CHỌN", function(btn)
 end)
 refreshMapTargets()
 
-mkTog(telePage, "Auto Fly  •  Bay theo mục tiêu đã chọn", false, function(s)
+mkTog(telePage, "Auto Fly  •  Bám nhanh mục tiêu", false, function(s)
     tg.autoFly = s
     if not s then
         local char = pl.Character
@@ -880,7 +948,6 @@ mkTog(telePage, "Auto Fly  •  Bay theo mục tiêu đã chọn", false, functi
         end
     end
 end)
-mkSli(telePage, "Fly Stiffness", 10, 120, 50, function(v) autoFlyStiffness = v end)
 
 mkSec(telePage, "DYNAMIC WAYPOINTS")
 local wpContainer = Instance.new("Frame", telePage)
@@ -951,8 +1018,277 @@ wpContainer.Parent = telePage
 
 -- AIM PAGE
 local aimPage = pages["AIM"]
-mkSec(aimPage, "AUTO AIM")
-mkTog(aimPage, "Aimlock Head (Closest)", false, function(s) tg.aimlock = s end)
+mkSec(aimPage, "AIM LOCK  /  FOV")
+
+aimFovCircle = Instance.new("Frame")
+aimFovCircle.Name = "AimFOVCircle"
+aimFovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+aimFovCircle.Position = UDim2.fromScale(0.5, 0.5)
+aimFovCircle.Size = UDim2.fromOffset(aimFovRadius * 2, aimFovRadius * 2)
+aimFovCircle.BackgroundTransparency = 1
+aimFovCircle.BorderSizePixel = 0
+aimFovCircle.Visible = false
+aimFovCircle.ZIndex = 80
+aimFovCircle.Parent = sg
+local aimFovStroke = Instance.new("UIStroke")
+aimFovStroke.Color = ACCENT
+aimFovStroke.Thickness = 1.5
+aimFovStroke.Transparency = 0.12
+aimFovStroke.Parent = aimFovCircle
+local aimFovCorner = Instance.new("UICorner")
+aimFovCorner.CornerRadius = UDim.new(1, 0)
+aimFovCorner.Parent = aimFovCircle
+
+mkTog(aimPage, "Aim Lock  •  Khóa mục tiêu gần tâm", false, function(s)
+    tg.aimlock = s
+end)
+mkTog(aimPage, "Giới hạn mục tiêu trong FOV", false, function(s)
+    aimFovEnabled = s
+    if aimFovCircle then aimFovCircle.Visible = s and aimFovVisible end
+end)
+mkTog(aimPage, "Hiện / Ẩn vòng FOV", false, function(s)
+    aimFovVisible = s
+    if aimFovCircle then aimFovCircle.Visible = aimFovEnabled and s end
+end)
+local fovFixedHint = Instance.new("TextLabel", aimPage)
+fovFixedHint.Size = UDim2.new(1, -8, 0, 30)
+fovFixedHint.BackgroundColor3 = BG_SEC
+fovFixedHint.BackgroundTransparency = 0.12
+fovFixedHint.BorderSizePixel = 0
+fovFixedHint.Text = "FOV FIXED  •  RADIUS 50"
+fovFixedHint.TextColor3 = ACCENT
+fovFixedHint.Font = Enum.Font.GothamBold
+fovFixedHint.TextSize = 11
+Instance.new("UICorner", fovFixedHint).CornerRadius = UDim.new(0, 8)
+
+local aimHint = Instance.new("TextLabel", aimPage)
+aimHint.Size = UDim2.new(1, -8, 0, 42)
+aimHint.BackgroundColor3 = BG_SEC
+aimHint.BackgroundTransparency = 0.12
+aimHint.BorderSizePixel = 0
+aimHint.Text = "FOV cố định tại tâm màn hình. Khi bật giới hạn FOV, Aim Lock chỉ chọn người chơi nằm bên trong vòng."
+aimHint.TextColor3 = TXT_DIM
+aimHint.Font = Enum.Font.Gotham
+aimHint.TextSize = 11
+aimHint.TextWrapped = true
+Instance.new("UICorner", aimHint).CornerRadius = UDim.new(0, 8)
+
+-- KILLER PAGE
+local killerPage = pages["KILLER"]
+local killerActive = false
+local killerTarget = nil
+local killerOldCameraMode, killerOldMinZoom, killerOldMaxZoom
+local killerLastAttack = 0
+local killerPromptProtection = false
+local protectedPrompts = {}
+
+mkSec(killerPage, "KILLER  /  CHỌN MỤC TIÊU")
+local killerTargetLabel = Instance.new("TextLabel", killerPage)
+killerTargetLabel.Size = UDim2.new(1, -8, 0, 24)
+killerTargetLabel.BackgroundTransparency = 1
+killerTargetLabel.Text = "MỤC TIÊU: CHƯA CHỌN"
+killerTargetLabel.TextColor3 = ACCENT
+killerTargetLabel.Font = Enum.Font.GothamBold
+killerTargetLabel.TextSize = 11
+killerTargetLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local killerList = Instance.new("ScrollingFrame", killerPage)
+killerList.Size = UDim2.new(1, -8, 0, 132)
+killerList.BackgroundColor3 = BG_CARD
+killerList.BorderSizePixel = 0
+killerList.ScrollBarThickness = 3
+killerList.ScrollBarImageColor3 = ACCENT
+killerList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+killerList.CanvasSize = UDim2.new(0, 0, 0, 0)
+Instance.new("UICorner", killerList).CornerRadius = UDim.new(0, 7)
+local killerLayout = Instance.new("UIListLayout", killerList)
+killerLayout.Padding = UDim.new(0, 3)
+local killerPadding = Instance.new("UIPadding", killerList)
+killerPadding.PaddingTop = UDim.new(0, 4)
+killerPadding.PaddingLeft = UDim.new(0, 4)
+killerPadding.PaddingRight = UDim.new(0, 4)
+
+local function refreshKillerTargets()
+    for _, child in ipairs(killerList:GetChildren()) do
+        if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
+    end
+    local candidates = {}
+    local myRoot = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+    for _, candidate in ipairs(P:GetPlayers()) do
+        if candidate ~= pl then
+            local root = getMapTargetRoot(candidate)
+            if root then
+                table.insert(candidates, {
+                    player = candidate,
+                    distance = myRoot and (root.Position - myRoot.Position).Magnitude or math.huge
+                })
+            end
+        end
+    end
+    table.sort(candidates, function(a, b) return a.distance < b.distance end)
+    for index, entry in ipairs(candidates) do
+        local candidate = entry.player
+        local row = Instance.new("TextButton")
+        row.Size = UDim2.new(1, -4, 0, 30)
+        row.LayoutOrder = index
+        row.BackgroundColor3 = candidate == killerTarget and BG_SEC or BG_MAIN
+        row.BorderSizePixel = 0
+        row.Text = string.format("  %s  •  %.0f studs", candidate.DisplayName, entry.distance)
+        row.TextColor3 = candidate == killerTarget and GREEN or TXT
+        row.TextXAlignment = Enum.TextXAlignment.Left
+        row.Font = Enum.Font.GothamMedium
+        row.TextSize = 10
+        row.Parent = killerList
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+        row.MouseButton1Click:Connect(function()
+            killerTarget = candidate
+            selectedFlyTarget = candidate
+            killerTargetLabel.Text = "ĐÃ CHỌN: " .. candidate.DisplayName
+            killerTargetLabel.TextColor3 = GREEN
+            refreshKillerTargets()
+        end)
+    end
+    if #candidates == 0 then
+        local empty = Instance.new("TextLabel")
+        empty.Size = UDim2.new(1, -4, 0, 28)
+        empty.BackgroundTransparency = 1
+        empty.Text = "Không có mục tiêu hợp lệ"
+        empty.TextColor3 = TXT_DIM
+        empty.Font = Enum.Font.Gotham
+        empty.TextSize = 10
+        empty.Parent = killerList
+    end
+end
+
+mkBtn(killerPage, "LÀM MỚI DANH SÁCH MỤC TIÊU", refreshKillerTargets)
+
+local function killerFindWeapon()
+    local character = pl.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local backpack = pl:FindFirstChildOfClass("Backpack")
+    if not humanoid then return nil end
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") then
+                humanoid:EquipTool(item)
+                return item
+            end
+        end
+    end
+    for _, item in ipairs(character:GetChildren()) do
+        if item:IsA("Tool") then return item end
+    end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if root then
+        local nearestTool, nearestDistance
+        for _, item in ipairs(workspace:GetDescendants()) do
+            if item:IsA("Tool") and item.Parent == workspace then
+                local handle = item:FindFirstChild("Handle")
+                if handle and handle:IsA("BasePart") then
+                    local distance = (handle.Position - root.Position).Magnitude
+                    if distance <= 80 and (not nearestDistance or distance < nearestDistance) then
+                        nearestTool, nearestDistance = item, distance
+                    end
+                end
+            end
+        end
+        if nearestTool then
+            local handle = nearestTool:FindFirstChild("Handle")
+            if handle then root.CFrame = handle.CFrame + Vector3.new(0, 2, 0) end
+            task.wait(0.15)
+            pcall(function() humanoid:EquipTool(nearestTool) end)
+            return nearestTool
+        end
+    end
+    return nil
+end
+
+local function killerSetActive(enabled)
+    killerActive = enabled
+    if enabled then
+        if not killerTarget or not getMapTargetRoot(killerTarget) then
+            killerActive = false
+            return false
+        end
+        local character = pl.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if not humanoid then killerActive = false return false end
+        killerOldCameraMode = pl.CameraMode
+        killerOldMinZoom, killerOldMaxZoom = pl.CameraMinZoomDistance, pl.CameraMaxZoomDistance
+        pl.CameraMode = Enum.CameraMode.LockFirstPerson
+        pl.CameraMinZoomDistance, pl.CameraMaxZoomDistance = 0.5, 0.5
+        tg.noclip = true
+        tg.autoFly = false
+        killerFindWeapon()
+    else
+        pl.CameraMode = killerOldCameraMode or Enum.CameraMode.Classic
+        pl.CameraMinZoomDistance = killerOldMinZoom or 0.5
+        pl.CameraMaxZoomDistance = killerOldMaxZoom or 128
+        tg.noclip = false
+    end
+    return true
+end
+
+mkTog(killerPage, "KILLER  •  BẬT / TẮT", false, function(enabled)
+    if not killerSetActive(enabled) then
+        killerTargetLabel.Text = "HÃY CHỌN MỤC TIÊU CÒN SỐNG"
+        killerTargetLabel.TextColor3 = RED
+    end
+end)
+
+mkTog(killerPage, "Chặn prompt mua hàng", false, function(enabled)
+    killerPromptProtection = enabled
+    if not enabled then
+        for prompt, wasEnabled in pairs(protectedPrompts) do
+            if prompt and prompt.Parent then prompt.Enabled = wasEnabled end
+        end
+        table.clear(protectedPrompts)
+    end
+end)
+
+local purchaseWords = {"buy", "purchase", "shop", "mua", "robux", "product"}
+local ProximityPromptService = game:GetService("ProximityPromptService")
+ProximityPromptService.PromptShown:Connect(function(prompt)
+    if not killerPromptProtection or not prompt or not prompt.Parent then return end
+    local promptText = string.lower((prompt.ActionText or "") .. " " .. (prompt.ObjectText or ""))
+    for _, word in ipairs(purchaseWords) do
+        if string.find(promptText, word, 1, true) then
+            if protectedPrompts[prompt] == nil then
+                protectedPrompts[prompt] = prompt.Enabled
+            end
+            prompt.Enabled = false
+            break
+        end
+    end
+end)
+
+RS.Heartbeat:Connect(function()
+    if not killerActive then return end
+    local targetRoot = getMapTargetRoot(killerTarget)
+    local character = pl.Character
+    local myRoot = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local targetCharacter = killerTarget and killerTarget.Character
+    local targetHead = targetCharacter and targetCharacter:FindFirstChild("Head")
+    if not targetRoot or not myRoot or not humanoid or humanoid.Health <= 0 or not targetHead then
+        killerSetActive(false)
+        return
+    end
+    myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 4, 0)
+    myRoot.AssemblyLinearVelocity = Vector3.zero
+    cam = workspace.CurrentCamera or cam
+    if cam then
+        cam.CameraSubject = humanoid
+        cam.CFrame = CFrame.new(cam.CFrame.Position, targetHead.Position)
+    end
+    local tool = killerFindWeapon()
+    if tool and tool.Parent == character and os.clock() - killerLastAttack >= 0.18 then
+        killerLastAttack = os.clock()
+        pcall(function() tool:Activate() end)
+    end
+end)
+
+refreshKillerTargets()
 
 -- INFO PAGE
 local infoPage = pages["INFO"]
