@@ -349,8 +349,6 @@ RS.Heartbeat:Connect(function(dt)
                 hr.AssemblyLinearVelocity = Vector3.new(md.Unit.X * stt.ws, hr.AssemblyLinearVelocity.Y, md.Unit.Z * stt.ws) 
             end 
         end
-        if stt.jp > 50 then h.UseJumpPower = true h.JumpPower = stt.jp end
-        
         -- Spin Bot
         if spinState.on then 
             spinAccum = spinAccum + math.rad(spinState.speed * 360) * 0.016 
@@ -408,7 +406,7 @@ end)
 
 -- UI DESIGN
 local main = Instance.new("Frame", sg)
-main.Size = UDim2.fromOffset(820, 500)
+main.Size = UDim2.new(1, -12, 1, -12)
 main.AnchorPoint = Vector2.new(0.5, 0.5)
 main.Position = UDim2.new(0.5, 0, 0.5, 0)
 main.BackgroundColor3 = BG_MAIN
@@ -425,12 +423,9 @@ mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local mainScale = Instance.new("UIScale", main)
 local function updateMenuScale()
-    local currentCamera = workspace.CurrentCamera
-    local v = currentCamera and currentCamera.ViewportSize or Vector2.new(900, 700)
-    -- Vivo V2025 portrait/landscape: giữ menu trọn trong vùng hiển thị.
-    local scaleX = (v.X - 24) / 820
-    local scaleY = (v.Y - 32) / 500
-    mainScale.Scale = math.clamp(math.min(scaleX, scaleY, 1), 0.38, 1)
+    -- Menu chiếm gần toàn màn hình, không thu nhỏ theo kích thước cố định.
+    mainScale.Scale = 1
+    main.Size = UDim2.new(1, -12, 1, -12)
     main.Position = UDim2.fromScale(0.5, 0.5)
 end
 updateMenuScale()
@@ -450,7 +445,7 @@ mainGradient.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.from
 mainGradient.Rotation = 90
 
 local topBar = Instance.new("Frame", main)
-topBar.Size = UDim2.new(1, 0, 0, 52)
+topBar.Size = UDim2.new(1, 0, 0, 44)
 topBar.BackgroundColor3 = BG_SEC
 topBar.ClipsDescendants = true
 topBar.BorderSizePixel = 0
@@ -490,7 +485,7 @@ Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
 closeBtn.MouseButton1Click:Connect(function() main.Visible = false end) -- Ẩn menu, không tắt các chức năng đang bật
 
 -- Menu cố định chính giữa màn hình, không có bong bóng nổi.
--- Chạm đồng thời 3 ngón để mở lại khi menu đang ẩn.
+-- Chạm đồng thời 4 ngón để mở lại khi menu đang ẩn.
 local activeTouches = {}
 local function countTouches()
     local n = 0
@@ -500,7 +495,7 @@ end
 UIS.InputBegan:Connect(function(input, processed)
     if input.UserInputType == Enum.UserInputType.Touch then
         activeTouches[input] = true
-        if countTouches() >= 3 and not main.Visible then
+        if countTouches() >= 4 and not main.Visible then
             main.Visible = true
         end
     end
@@ -513,15 +508,18 @@ end)
 
 -- Tabs
 local sideBar = Instance.new("Frame", main)
-sideBar.Size = UDim2.new(0, 158, 1, -68)
-sideBar.Position = UDim2.new(0, 12, 0, 60)
+sideBar.Size = UDim2.new(1, -24, 0, 42)
+sideBar.Position = UDim2.new(0, 12, 0, 50)
 sideBar.BackgroundTransparency = 1
 local sideLay = Instance.new("UIListLayout", sideBar)
-sideLay.Padding = UDim.new(0, 8)
+sideLay.FillDirection = Enum.FillDirection.Horizontal
+sideLay.HorizontalAlignment = Enum.HorizontalAlignment.Left
+sideLay.VerticalAlignment = Enum.VerticalAlignment.Center
+sideLay.Padding = UDim.new(0, 6)
 
 local content = Instance.new("Frame", main)
-content.Size = UDim2.new(1, -190, 1, -68)
-content.Position = UDim2.new(0, 178, 0, 60)
+content.Size = UDim2.new(1, -24, 1, -104)
+content.Position = UDim2.new(0, 12, 0, 98)
 content.BackgroundTransparency = 1
 
 local tabs = {"MOVE", "ESP", "PLAYER", "TELE", "AIM", "KILLER", "INFO"}
@@ -540,14 +538,15 @@ end
 
 for i, name in ipairs(tabs) do
     local btn = Instance.new("TextButton", sideBar)
-    btn.Size = UDim2.new(1, 0, 0, 42)
+    btn.Size = UDim2.new(1/7, -6, 1, 0)
     btn.BackgroundColor3 = (i == 1) and ACCENT or BG_SEC
     btn.Name = "Tab_" .. name
     btn.Text = tabLabels[name] or ("  " .. name)
     btn.TextColor3 = (i == 1) and BG_MAIN or TXT_DIM
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 12
-    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.TextXAlignment = Enum.TextXAlignment.Center
+    btn.TextSize = 10
     btn.AutoButtonColor = false
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
     
@@ -689,15 +688,26 @@ end
 -- POPULATE PAGES
 local movePage = pages["MOVE"]
 mkSec(movePage, "MOVEMENT")
-mkSli(movePage, "Walk Speed", 16, 300, 16, function(v) stt.ws = v end)
-mkSli(movePage, "Jump Power", 50, 300, 50, function(v) stt.jp = v end)
+mkSli(movePage, "Walk Speed", 16, 100, 16, function(v) stt.ws = math.clamp(v, 16, 100) end)
 mkTog(movePage, "Infinite Jump", false, function(s) tg.infJump = s end)
+
+-- Infinite Jump: xử lý trực tiếp mỗi lần người chơi nhấn nút nhảy.
+UIS.JumpRequest:Connect(function()
+    if not tg.infJump then return end
+    local character = pl.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.Health > 0 then
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
 
 local espPage = pages["ESP"]
 mkSec(espPage, "ESP NGƯỜI CHƠI  /  VISUAL")
-mkTog(espPage, "Rainbow Line  •  Nối về giữa đáy màn hình", false, function(s) espFlags.line = s end)
-mkTog(espPage, "2D Box  •  Khung bao quanh nhân vật", false, function(s) espFlags.box = s end)
-mkTog(espPage, "Name + Distance  •  Tên và khoảng cách", false, function(s) espFlags.info = s end)
+mkTog(espPage, "ESP  •  BẬT / TẮT TẤT CẢ", false, function(s)
+    espFlags.line = s
+    espFlags.box = s
+    espFlags.info = s
+end)
 local espHint = Instance.new("TextLabel", espPage)
 espHint.Size = UDim2.new(1, -8, 0, 42)
 espHint.BackgroundColor3 = BG_SEC
@@ -742,24 +752,14 @@ local function fpsSet(obj, property, value)
 end
 local function fpsOptimizeObject(obj)
     if not tg.fps or not obj then return end
+    -- Giảm tải hiệu ứng nặng nhưng giữ nguyên hậu kỳ, ánh sáng, sương,
+    -- texture và vật liệu để tránh hình ảnh bị chói hoặc quá trống.
     if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
         or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
         fpsSet(obj, "Enabled", false)
-    elseif obj:IsA("PostEffect") then
-        fpsSet(obj, "Enabled", false)
-    elseif obj:IsA("Decal") or obj:IsA("Texture") then
-        fpsSet(obj, "Transparency", 1)
     elseif obj:IsA("BasePart") then
         fpsSet(obj, "CastShadow", false)
         fpsSet(obj, "Reflectance", 0)
-        -- Avoid changing collision, anchoring, size, or gameplay physics.
-        fpsSet(obj, "Material", Enum.Material.Plastic)
-    elseif obj:IsA("Atmosphere") then
-        fpsSet(obj, "Density", 0)
-        fpsSet(obj, "Haze", 0)
-        fpsSet(obj, "Glare", 0)
-    elseif obj:IsA("Clouds") then
-        fpsSet(obj, "Enabled", false)
     end
 end
 local function setFPSBoost(enabled)
@@ -767,18 +767,21 @@ local function setFPSBoost(enabled)
     if enabled then
         fpsOldShadows = L.GlobalShadows
         fpsOldEnvironment = {
-            Brightness = L.Brightness,
-            FogEnd = L.FogEnd,
             GlobalShadows = L.GlobalShadows,
         }
         L.GlobalShadows = false
-        L.FogEnd = 1000000
-        for _, obj in ipairs(game:GetDescendants()) do
-            fpsOptimizeObject(obj)
-        end
         if fpsDescendantConnection then fpsDescendantConnection:Disconnect() end
         fpsDescendantConnection = game.DescendantAdded:Connect(function(obj)
             if tg.fps then fpsOptimizeObject(obj) end
+        end)
+        -- Chia nhỏ lượt quét để tránh khựng mạnh ngay lúc bật FPS.
+        task.spawn(function()
+            local descendants = game:GetDescendants()
+            for i, obj in ipairs(descendants) do
+                if not tg.fps then break end
+                fpsOptimizeObject(obj)
+                if i % 250 == 0 then task.wait() end
+            end
         end)
     else
         if fpsDescendantConnection then
@@ -793,8 +796,6 @@ local function setFPSBoost(enabled)
             end
         end
         table.clear(fpsSaved)
-        if fpsOldEnvironment.Brightness ~= nil then L.Brightness = fpsOldEnvironment.Brightness end
-        if fpsOldEnvironment.FogEnd ~= nil then L.FogEnd = fpsOldEnvironment.FogEnd end
         L.GlobalShadows = fpsOldEnvironment.GlobalShadows ~= nil and fpsOldEnvironment.GlobalShadows or fpsOldShadows
         table.clear(fpsOldEnvironment)
     end
