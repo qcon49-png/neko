@@ -38,6 +38,8 @@ local stt = {ws = 16, jp = 50}
 local tg = {esp = false, noclip = false, fps = false, infJump = false, aimlock = false, autoFly = false}
 local spinState = {on = false, speed = 5}
 local autoFlyStiffness = 50
+local selectedFlyTarget = nil
+local flyWasEnabled = false
 local spinAccum = 0
 
 -- ESP System (2D Box / Rainbow Tracer / Name + Distance)
@@ -86,7 +88,8 @@ RS.RenderStepped:Connect(function()
     local myChar = pl.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local viewport = cam.ViewportSize
-    local bottom = Vector2.new(viewport.X * 0.5, viewport.Y - 2)
+    -- Điểm gốc cố định ở giữa cạnh dưới màn hình, nhích lên để tránh sát mép.
+    local bottom = Vector2.new(viewport.X * 0.5, viewport.Y * 0.88)
     local hue = (os.clock() * 0.22) % 1
     local rainbow = Color3.fromHSV(hue, 1, 1)
 
@@ -119,15 +122,24 @@ RS.RenderStepped:Connect(function()
                 end
                 local validBox = minX < maxX and minY < maxY
                 if espFlags.line then
+                    -- Nối chính xác từ điểm giữa phía dưới màn hình tới tâm người chơi.
+                    -- Đặt Frame tại trung điểm để Rotation không làm lệch đầu line.
                     local target = Vector2.new(center.X, center.Y)
                     local delta = target - bottom
-                    data.line.Position = UDim2.fromOffset(bottom.X, bottom.Y)
-                    data.line.AnchorPoint = Vector2.new(0, 0.5)
-                    data.line.Size = UDim2.fromOffset(delta.Magnitude, 2)
+                    local length = delta.Magnitude
+
+                    data.line.AnchorPoint = Vector2.new(0.5, 0.5)
+                    data.line.Position = UDim2.fromOffset(
+                        (bottom.X + target.X) * 0.5,
+                        (bottom.Y + target.Y) * 0.5
+                    )
+                    data.line.Size = UDim2.fromOffset(length, 2)
                     data.line.Rotation = math.deg(math.atan2(delta.Y, delta.X))
                     data.line.BackgroundColor3 = rainbow
-                    data.line.Visible = true
-                else data.line.Visible = false end
+                    data.line.Visible = length > 1
+                else
+                    data.line.Visible = false
+                end
 
                 if espFlags.box and validBox then
                     data.box.Position = UDim2.fromOffset(minX, minY)
@@ -212,28 +224,36 @@ RS.Heartbeat:Connect(function(dt)
         end
     end
     
-    -- Auto Fly
+    -- Auto Fly: follow đúng người chơi đã chọn, không khóa PlatformStand.
     if tg.autoFly then
-        local myHR = c and c:FindFirstChild("HumanoidRootPart") 
-        if myHR and h then
-            local closestP = nil
-            local minDist = math.huge
-            for _, p in ipairs(P:GetPlayers()) do
-                if p ~= pl and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                    local dist = (p.Character.HumanoidRootPart.Position - myHR.Position).Magnitude
-                    if dist < minDist then
-                        minDist = dist
-                        closestP = p.Character.HumanoidRootPart
-                    end
-                end
-            end
-            if closestP then
-                h.PlatformStand = true
-                local desired = closestP.Position + Vector3.new(0, 4, 0)
-                local newPos = myHR.Position:Lerp(desired, 1 - math.exp(-autoFlyStiffness * dt))
-                myHR.CFrame = CFrame.lookAt(newPos, closestP.Position)
-                myHR.AssemblyLinearVelocity = Vector3.zero
-            end
+        local myHR = c and c:FindFirstChild("HumanoidRootPart")
+        local targetChar = selectedFlyTarget and selectedFlyTarget.Character
+        local targetHR = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+        local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+
+        if myHR and h and h.Health > 0 and targetHR and targetHum and targetHum.Health > 0 then
+            flyWasEnabled = true
+            local desired = targetHR.Position + Vector3.new(0, 4, 0)
+            local alpha = 1 - math.exp(-math.clamp(autoFlyStiffness, 10, 120) * dt)
+            local newPos = myHR.Position:Lerp(desired, alpha)
+            myHR.CFrame = CFrame.lookAt(newPos, targetHR.Position)
+            -- Không ghi đè vận tốc về zero và không bật PlatformStand,
+            -- tránh nhân vật bị kẹt/ngập đất khi tắt Auto Fly.
+        end
+    elseif flyWasEnabled then
+        flyWasEnabled = false
+        local char = pl.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if hum then
+            hum.PlatformStand = false
+            hum.Sit = false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+        if root then
+            -- Chỉ bỏ vận tốc rơi dọc còn sót lại, giữ điều khiển ngang tự nhiên.
+            local v = root.AssemblyLinearVelocity
+            root.AssemblyLinearVelocity = Vector3.new(v.X, math.max(v.Y, 0), v.Z)
         end
     end
 end)
@@ -550,8 +570,44 @@ mkBtn(plPage, "Rejoin Server", function() TS:Teleport(game.PlaceId, pl) end)
 
 -- TELEPORT & DYNAMIC WAYPOINTS
 local telePage = pages["TELE"]
-mkSec(telePage, "AUTO FLY")
-mkTog(telePage, "Auto Fly (Follow Closest)", false, function(s) tg.autoFly = s end)
+mkSec(telePage, "AUTO FLY  /  FOLLOW TARGET")
+
+local targetPicker = mkBtn(telePage, "Người chơi: Chưa chọn  •  Nhấn để chọn", function(btn)
+    local candidates = {}
+    for _, player in ipairs(P:GetPlayers()) do
+        if player ~= pl and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            table.insert(candidates, player)
+        end
+    end
+    table.sort(candidates, function(a, b) return a.Name:lower() < b.Name:lower() end)
+
+    if #candidates == 0 then
+        selectedFlyTarget = nil
+        btn.Text = "   Không tìm thấy người chơi hợp lệ"
+        return
+    end
+
+    local currentIndex = 0
+    for i, player in ipairs(candidates) do
+        if player == selectedFlyTarget then currentIndex = i break end
+    end
+    currentIndex = (currentIndex % #candidates) + 1
+    selectedFlyTarget = candidates[currentIndex]
+    btn.Text = "   Đang theo: " .. selectedFlyTarget.DisplayName .. "  •  Nhấn để đổi"
+end)
+
+mkTog(telePage, "Auto Fly  •  Bay theo người đã chọn", false, function(s)
+    tg.autoFly = s
+    if not s then
+        local char = pl.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.PlatformStand = false
+            hum.Sit = false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+    end
+end)
 mkSli(telePage, "Fly Stiffness", 10, 120, 50, function(v) autoFlyStiffness = v end)
 
 mkSec(telePage, "DYNAMIC WAYPOINTS")
