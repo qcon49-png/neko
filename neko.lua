@@ -81,6 +81,7 @@ local function makeESPObject(player)
         return o
     end
     data.line = frame(sg)
+    data.line2 = frame(sg) -- Đoạn line thứ hai, dùng để bỏ qua phần nằm sau nhân vật chính.
     data.box = frame(sg)
     data.box.BackgroundTransparency = 1
     data.box.BorderSizePixel = 0
@@ -105,6 +106,7 @@ end
 
 local function hideESP(data)
     data.line.Visible = false
+    data.line2.Visible = false
     data.box.Visible = false
     data.label.Visible = false
 end
@@ -119,8 +121,47 @@ RS.RenderStepped:Connect(function()
     local espEnabled = espFlags.line or espFlags.box or espFlags.info
     espCounter.Visible = espEnabled
     espCounter.Position = UDim2.new(0, 9, 1, -9)
-    -- Điểm gốc cố định ở giữa cạnh dưới màn hình, nhích lên để tránh sát mép.
-    local bottom = Vector2.new(viewport.X * 0.5, viewport.Y * 0.88)
+    -- Gốc line nằm chính giữa sát mép dưới màn hình.
+    local bottom = Vector2.new(viewport.X * 0.5, viewport.Y - 1)
+
+    -- Lấy vùng chiếm màn hình của nhân vật chính để line không vẽ đè xuyên qua người.
+    local myMinX, myMinY = math.huge, math.huge
+    local myMaxX, myMaxY = -math.huge, -math.huge
+    if myChar then
+        local myCF, mySize = myChar:GetBoundingBox()
+        for x = -1, 1, 2 do
+            for y = -1, 1, 2 do
+                for z = -1, 1, 2 do
+                    local worldCorner = myCF:PointToWorldSpace(Vector3.new(
+                        mySize.X * x / 2, mySize.Y * y / 2, mySize.Z * z / 2
+                    ))
+                    local screenPoint, visible = cam:WorldToViewportPoint(worldCorner)
+                    if visible then
+                        myMinX = math.min(myMinX, screenPoint.X)
+                        myMinY = math.min(myMinY, screenPoint.Y)
+                        myMaxX = math.max(myMaxX, screenPoint.X)
+                        myMaxY = math.max(myMaxY, screenPoint.Y)
+                    end
+                end
+            end
+        end
+    end
+    local hasMyScreenBounds = myMinX < myMaxX and myMinY < myMaxY
+
+    local function drawLineSegment(lineObject, fromPoint, toPoint, color)
+        local delta = toPoint - fromPoint
+        local length = delta.Magnitude
+        lineObject.AnchorPoint = Vector2.new(0.5, 0.5)
+        lineObject.Position = UDim2.fromOffset(
+            (fromPoint.X + toPoint.X) * 0.5,
+            (fromPoint.Y + toPoint.Y) * 0.5
+        )
+        lineObject.Size = UDim2.fromOffset(length, 2)
+        lineObject.Rotation = math.deg(math.atan2(delta.Y, delta.X))
+        lineObject.BackgroundColor3 = color
+        lineObject.Visible = length > 1
+    end
+
     local hue = (os.clock() * 0.22) % 1
     local rainbow = Color3.fromHSV(hue, 1, 1)
 
@@ -154,23 +195,59 @@ RS.RenderStepped:Connect(function()
                 end
                 local validBox = minX < maxX and minY < maxY
                 if espFlags.line then
-                    -- Nối chính xác từ điểm giữa phía dưới màn hình tới tâm người chơi.
-                    -- Đặt Frame tại trung điểm để Rotation không làm lệch đầu line.
                     local target = Vector2.new(center.X, center.Y)
-                    local delta = target - bottom
-                    local length = delta.Magnitude
 
-                    data.line.AnchorPoint = Vector2.new(0.5, 0.5)
-                    data.line.Position = UDim2.fromOffset(
-                        (bottom.X + target.X) * 0.5,
-                        (bottom.Y + target.Y) * 0.5
-                    )
-                    data.line.Size = UDim2.fromOffset(length, 2)
-                    data.line.Rotation = math.deg(math.atan2(delta.Y, delta.X))
-                    data.line.BackgroundColor3 = rainbow
-                    data.line.Visible = length > 1
+                    -- Tìm đoạn giao giữa line (đáy màn hình -> mục tiêu) và khung nhân vật chính.
+                    -- Phần nằm trong khung nhân vật sẽ bị bỏ, hai phần ngoài vẫn được vẽ.
+                    local dx, dy = target.X - bottom.X, target.Y - bottom.Y
+                    local tEnter, tExit = 0, 1
+                    local intersects = false
+
+                    if hasMyScreenBounds then
+                        local p = {-dx, dx, -dy, dy}
+                        local q = {
+                            bottom.X - myMinX,
+                            myMaxX - bottom.X,
+                            bottom.Y - myMinY,
+                            myMaxY - bottom.Y
+                        }
+                        local valid = true
+                        for k = 1, 4 do
+                            if math.abs(p[k]) < 1e-6 then
+                                if q[k] < 0 then valid = false break end
+                            else
+                                local r = q[k] / p[k]
+                                if p[k] < 0 then
+                                    tEnter = math.max(tEnter, r)
+                                else
+                                    tExit = math.min(tExit, r)
+                                end
+                            end
+                        end
+                        intersects = valid and tEnter <= tExit and tExit >= 0 and tEnter <= 1
+                    end
+
+                    if intersects then
+                        tEnter = math.clamp(tEnter, 0, 1)
+                        tExit = math.clamp(tExit, 0, 1)
+                        local before = Vector2.new(
+                            bottom.X + dx * tEnter,
+                            bottom.Y + dy * tEnter
+                        )
+                        local after = Vector2.new(
+                            bottom.X + dx * tExit,
+                            bottom.Y + dy * tExit
+                        )
+
+                        drawLineSegment(data.line, bottom, before, rainbow)
+                        drawLineSegment(data.line2, after, target, rainbow)
+                    else
+                        drawLineSegment(data.line, bottom, target, rainbow)
+                        data.line2.Visible = false
+                    end
                 else
                     data.line.Visible = false
+                    data.line2.Visible = false
                 end
 
                 if espFlags.box and validBox then
@@ -204,7 +281,7 @@ end)
 P.PlayerRemoving:Connect(function(player)
     local data = espTable[player]
     if data then
-        data.line:Destroy(); data.box:Destroy(); data.label:Destroy()
+        data.line:Destroy(); data.line2:Destroy(); data.box:Destroy(); data.label:Destroy()
         espTable[player] = nil
     end
 end)
@@ -295,14 +372,14 @@ RS.Heartbeat:Connect(function(dt)
                 flyAlignPosition.ApplyAtCenterOfMass = true
                 flyAlignPosition.RigidityEnabled = false
                 flyAlignPosition.MaxForce = math.max(myHR.AssemblyMass * workspace.Gravity * 10, 50000)
-                flyAlignPosition.MaxVelocity = 34
-                flyAlignPosition.Responsiveness = math.clamp(autoFlyStiffness * 0.45, 8, 42)
+                flyAlignPosition.MaxVelocity = 12
+                flyAlignPosition.Responsiveness = math.clamp(autoFlyStiffness * 0.30, 5, 24)
                 flyAlignPosition.Parent = myHR
             end
 
             flyWasEnabled = true
-            flyAlignPosition.Position = targetHR.Position + Vector3.new(0, 4, 0)
-            flyAlignPosition.Responsiveness = math.clamp(autoFlyStiffness * 0.45, 8, 42)
+            flyAlignPosition.Position = targetHR.Position + Vector3.new(0, 1.8, 0)
+            flyAlignPosition.Responsiveness = math.clamp(autoFlyStiffness * 0.30, 5, 24)
         else
             -- Mục tiêu mất kết nối/chết: tháo lực điều khiển, không để lực cũ kéo nhân vật.
             if flyAlignPosition then flyAlignPosition:Destroy(); flyAlignPosition = nil end
@@ -341,7 +418,7 @@ end)
 
 -- UI DESIGN
 local main = Instance.new("Frame", sg)
-main.Size = UDim2.fromOffset(760, 390)
+main.Size = UDim2.fromOffset(820, 500)
 main.AnchorPoint = Vector2.new(0.5, 0.5)
 main.Position = UDim2.new(0.5, 0, 0.5, 0)
 main.BackgroundColor3 = BG_MAIN
@@ -353,7 +430,7 @@ Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
 local mainStroke = Instance.new("UIStroke", main)
 mainStroke.Color = ACCENT
 mainStroke.Thickness = 1.5
-mainStroke.Transparency = 0.22
+mainStroke.Transparency = 0.12
 mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local mainScale = Instance.new("UIScale", main)
@@ -361,8 +438,8 @@ local function updateMenuScale()
     local currentCamera = workspace.CurrentCamera
     local v = currentCamera and currentCamera.ViewportSize or Vector2.new(900, 700)
     -- Vivo V2025 portrait/landscape: giữ menu trọn trong vùng hiển thị.
-    local scaleX = (v.X - 20) / 760
-    local scaleY = (v.Y - 28) / 390
+    local scaleX = (v.X - 24) / 820
+    local scaleY = (v.Y - 32) / 500
     mainScale.Scale = math.clamp(math.min(scaleX, scaleY, 1), 0.38, 1)
     main.Position = UDim2.fromScale(0.5, 0.5)
 end
@@ -383,20 +460,21 @@ mainGradient.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.from
 mainGradient.Rotation = 90
 
 local topBar = Instance.new("Frame", main)
-topBar.Size = UDim2.new(1, 0, 0, 44)
+topBar.Size = UDim2.new(1, 0, 0, 52)
 topBar.BackgroundColor3 = BG_SEC
+topBar.ClipsDescendants = true
 topBar.BorderSizePixel = 0
 topBar.ZIndex = 101
 Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 12)
 
 local title = Instance.new("TextLabel", topBar)
-title.Size = UDim2.new(1, -60, 1, 0)
-title.Position = UDim2.new(0, 16, 0, 0)
+title.Size = UDim2.new(1, -250, 1, 0)
+title.Position = UDim2.new(0, 18, 0, 0)
 title.BackgroundTransparency = 1
 title.Text = "NEKO HUB  /  CONTROL PANEL"
 title.TextColor3 = ACCENT
 title.Font = Enum.Font.GothamBold
-title.TextSize = 15
+title.TextSize = 16
 title.TextXAlignment = Enum.TextXAlignment.Left
 
 local subtitle = Instance.new("TextLabel", topBar)
@@ -410,8 +488,8 @@ subtitle.TextSize = 10
 subtitle.TextXAlignment = Enum.TextXAlignment.Right
 
 local closeBtn = Instance.new("TextButton", topBar)
-closeBtn.Size = UDim2.new(0, 32, 0, 28)
-closeBtn.Position = UDim2.new(1, -40, 0.5, -14)
+closeBtn.Size = UDim2.new(0, 34, 0, 30)
+closeBtn.Position = UDim2.new(1, -44, 0.5, -15)
 closeBtn.BackgroundColor3 = BG_CARD
 closeBtn.Text = "—"
 closeBtn.TextColor3 = RED
@@ -445,15 +523,15 @@ end)
 
 -- Tabs
 local sideBar = Instance.new("Frame", main)
-sideBar.Size = UDim2.new(0, 132, 1, -56)
-sideBar.Position = UDim2.new(0, 10, 0, 50)
+sideBar.Size = UDim2.new(0, 158, 1, -68)
+sideBar.Position = UDim2.new(0, 12, 0, 60)
 sideBar.BackgroundTransparency = 1
 local sideLay = Instance.new("UIListLayout", sideBar)
-sideLay.Padding = UDim.new(0, 6)
+sideLay.Padding = UDim.new(0, 8)
 
 local content = Instance.new("Frame", main)
-content.Size = UDim2.new(1, -154, 1, -56)
-content.Position = UDim2.new(0, 144, 0, 50)
+content.Size = UDim2.new(1, -190, 1, -68)
+content.Position = UDim2.new(0, 178, 0, 60)
 content.BackgroundTransparency = 1
 
 local tabs = {"MOVE", "ESP", "PLAYER", "TELE", "AIM", "INFO"}
@@ -472,7 +550,7 @@ end
 
 for i, name in ipairs(tabs) do
     local btn = Instance.new("TextButton", sideBar)
-    btn.Size = UDim2.new(1, 0, 0, 36)
+    btn.Size = UDim2.new(1, 0, 0, 42)
     btn.BackgroundColor3 = (i == 1) and ACCENT or BG_SEC
     btn.Name = "Tab_" .. name
     btn.Text = tabLabels[name] or ("  " .. name)
@@ -489,20 +567,25 @@ for i, name in ipairs(tabs) do
     page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
-    page.ScrollBarThickness = 3
+    page.ScrollBarThickness = 4
     page.ScrollBarImageColor3 = ACCENT
     page.CanvasSize = UDim2.new(0, 0, 0, 0)
     page.AutomaticCanvasSize = Enum.AutomaticSize.Y
     page.Visible = (i == 1)
     local lay = Instance.new("UIListLayout", page)
-    lay.Padding = UDim.new(0, 8)
+    lay.Padding = UDim.new(0, 10)
+    local pagePadding = Instance.new("UIPadding", page)
+    pagePadding.PaddingTop = UDim.new(0, 4)
+    pagePadding.PaddingBottom = UDim.new(0, 8)
+    pagePadding.PaddingLeft = UDim.new(0, 3)
+    pagePadding.PaddingRight = UDim.new(0, 6)
     pages[name] = page
 end
 
 -- UI Helpers
 local function mkSec(parent, text)
     local s = Instance.new("Frame", parent)
-    s.Size = UDim2.new(1, -8, 0, 26)
+    s.Size = UDim2.new(1, -8, 0, 32)
     s.BackgroundTransparency = 1
     local l = Instance.new("TextLabel", s)
     l.Size = UDim2.new(1, 0, 1, 0)
@@ -518,13 +601,13 @@ end
 local function mkTog(parent, text, default, callback)
     local state = default or false
     local b = Instance.new("TextButton", parent)
-    b.Size = UDim2.new(1, -8, 0, 40)
+    b.Size = UDim2.new(1, -8, 0, 46)
     b.BackgroundColor3 = BG_CARD
     b.Text = "   " .. text
     b.TextColor3 = TXT
     b.TextXAlignment = Enum.TextXAlignment.Left
     b.Font = Enum.Font.GothamMedium
-    b.TextSize = 12
+    b.TextSize = 13
     b.AutoButtonColor = false
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
 
@@ -566,23 +649,23 @@ end
 
 local function mkSli(parent, text, min, max, default, callback)
     local f = Instance.new("Frame", parent)
-    f.Size = UDim2.new(1, -8, 0, 44)
+    f.Size = UDim2.new(1, -8, 0, 54)
     f.BackgroundColor3 = BG_CARD
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
 
     local lbl = Instance.new("TextLabel", f)
-    lbl.Size = UDim2.new(1, -16, 0, 20)
-    lbl.Position = UDim2.new(0, 12, 0, 4)
+    lbl.Size = UDim2.new(1, -16, 0, 23)
+    lbl.Position = UDim2.new(0, 12, 0, 5)
     lbl.BackgroundTransparency = 1
     lbl.Text = text .. ": " .. default
     lbl.TextColor3 = TXT
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Font = Enum.Font.GothamMedium
-    lbl.TextSize = 12
+    lbl.TextSize = 13
 
     local bar = Instance.new("Frame", f)
     bar.Size = UDim2.new(1, -24, 0, 4)
-    bar.Position = UDim2.new(0, 12, 0, 30)
+    bar.Position = UDim2.new(0, 12, 0, 36)
     bar.BackgroundColor3 = BG_SEC
     bar.BorderSizePixel = 0
     Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
@@ -657,19 +740,25 @@ mkBtn(plPage, "Rejoin Server", function() TS:Teleport(game.PlaceId, pl) end)
 local telePage = pages["TELE"]
 mkSec(telePage, "AUTO FLY  /  FOLLOW TARGET")
 
--- Danh sách mục tiêu trong map dùng chung cho Teleport và Auto Fly.
+-- Dropdown chỉ liệt kê NGƯỜI CHƠI thật; dùng chung cho Teleport và Auto Fly.
 local selectedTargetLabel = Instance.new("TextLabel", telePage)
-selectedTargetLabel.Size = UDim2.new(1, -8, 0, 24)
+selectedTargetLabel.Size = UDim2.new(1, -8, 0, 22)
 selectedTargetLabel.BackgroundTransparency = 1
-selectedTargetLabel.Text = "MỤC TIÊU: CHƯA CHỌN"
+selectedTargetLabel.Text = "NGƯỜI CHƠI: CHƯA CHỌN"
 selectedTargetLabel.TextColor3 = ACCENT
 selectedTargetLabel.Font = Enum.Font.GothamBold
 selectedTargetLabel.TextSize = 11
 selectedTargetLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-local targetScroll = Instance.new("ScrollingFrame", telePage)
-targetScroll.Name = "MapTargetList"
-targetScroll.Size = UDim2.new(1, -8, 0, 150)
+local targetScroll
+local targetDropdownButton = mkBtn(telePage, "CHỌN NGƯỜI CHƠI  ▼", function(btn)
+    targetScroll.Visible = not targetScroll.Visible
+    btn.Text = targetScroll.Visible and "CHỌN NGƯỜI CHƠI  ▲" or "CHỌN NGƯỜI CHƠI  ▼"
+end)
+
+targetScroll = Instance.new("ScrollingFrame", telePage)
+targetScroll.Name = "PlayerTargetDropdown"
+targetScroll.Size = UDim2.new(1, -8, 0, 132)
 targetScroll.BackgroundColor3 = BG_CARD
 targetScroll.BorderSizePixel = 0
 targetScroll.ScrollBarThickness = 3
@@ -677,6 +766,7 @@ targetScroll.ScrollBarImageColor3 = ACCENT
 targetScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 targetScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 targetScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+targetScroll.Visible = false
 Instance.new("UICorner", targetScroll).CornerRadius = UDim.new(0, 7)
 local targetListLayout = Instance.new("UIListLayout", targetScroll)
 targetListLayout.Padding = UDim.new(0, 3)
@@ -688,68 +778,63 @@ targetListPadding.PaddingLeft = UDim.new(0, 4)
 targetListPadding.PaddingRight = UDim.new(0, 4)
 
 local function getMapTargetRoot(target)
-    if not target or not target.Parent then return nil end
-    if target:IsA("Player") then
-        local ch = target.Character
-        return ch and ch:FindFirstChild("HumanoidRootPart")
-    elseif target:IsA("Model") then
-        return target.PrimaryPart or target:FindFirstChild("HumanoidRootPart") or target:FindFirstChildWhichIsA("BasePart", true)
-    elseif target:IsA("BasePart") then
-        return target
+    if typeof(target) ~= "Instance" or not target:IsA("Player") or target == pl or not target.Parent then
+        return nil
     end
-    return nil
+    local character = target.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or humanoid.Health <= 0 then return nil end
+    return root
 end
 
 local function getMapTargetName(target)
-    if target:IsA("Player") then return target.DisplayName end
-    return target.Name
+    return target.DisplayName .. "  (@" .. target.Name .. ")"
 end
 
 local function refreshMapTargets()
     for _, child in ipairs(targetScroll:GetChildren()) do
-        if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
+        if child:IsA("TextButton") or child:IsA("TextLabel") then
+            child:Destroy()
+        end
     end
 
     local myRoot = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
-    local found, seen = {}, {}
-    for _, item in ipairs(workspace:GetDescendants()) do
-        local candidate
-        if item:IsA("Model") and not item:FindFirstChildOfClass("Humanoid") then
-            candidate = item
-        elseif item:IsA("BasePart") and item.Parent and not item.Parent:IsA("Model") then
-            candidate = item
-        end
-
-        if candidate and not seen[candidate] then
-            local root = getMapTargetRoot(candidate)
-            if root and not (pl.Character and candidate == pl.Character) then
+    local found = {}
+    for _, player in ipairs(P:GetPlayers()) do
+        if player ~= pl then
+            local root = getMapTargetRoot(player)
+            if root then
                 local distance = myRoot and (root.Position - myRoot.Position).Magnitude or math.huge
-                table.insert(found, {instance = candidate, distance = distance})
-                seen[candidate] = true
+                table.insert(found, {player = player, distance = distance})
             end
         end
     end
 
     table.sort(found, function(a, b) return a.distance < b.distance end)
+
     for index, entry in ipairs(found) do
-        if index > 100 then break end
-        local item = entry.instance
-        local row = Instance.new("TextButton", targetScroll)
-        row.Name = "Target_" .. tostring(index)
+        local player = entry.player
+        local row = Instance.new("TextButton")
+        row.Name = "PlayerTarget_" .. tostring(index)
         row.Size = UDim2.new(1, -4, 0, 30)
-        row.BackgroundColor3 = item == selectedFlyTarget and BG_SEC or BG_MAIN
+        row.BackgroundColor3 = player == selectedFlyTarget and BG_SEC or BG_MAIN
         row.BorderSizePixel = 0
         row.AutoButtonColor = true
-        row.Text = string.format("  %s   •   %.1f studs", getMapTargetName(item), entry.distance)
-        row.TextColor3 = item == selectedFlyTarget and GREEN or TXT
+        row.Text = string.format("  %s   •   %.1f studs", getMapTargetName(player), entry.distance)
+        row.TextColor3 = player == selectedFlyTarget and GREEN or TXT
         row.TextXAlignment = Enum.TextXAlignment.Left
         row.Font = Enum.Font.GothamMedium
         row.TextSize = 10
+        row.Parent = targetScroll
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+
         row.MouseButton1Click:Connect(function()
-            selectedFlyTarget = item
-            selectedTargetLabel.Text = "MỤC TIÊU: " .. getMapTargetName(item)
+            selectedFlyTarget = player
+            selectedTargetLabel.Text = "ĐÃ CHỌN: " .. getMapTargetName(player)
             selectedTargetLabel.TextColor3 = GREEN
+            targetScroll.Visible = false
+            targetDropdownButton.Text = "CHỌN NGƯỜI CHƠI  ▼"
             for _, other in ipairs(targetScroll:GetChildren()) do
                 if other:IsA("TextButton") then
                     other.BackgroundColor3 = other == row and BG_SEC or BG_MAIN
@@ -760,24 +845,25 @@ local function refreshMapTargets()
     end
 
     if #found == 0 then
-        local empty = Instance.new("TextLabel", targetScroll)
-        empty.Size = UDim2.new(1, -4, 0, 30)
+        local empty = Instance.new("TextLabel")
+        empty.Size = UDim2.new(1, -4, 0, 28)
         empty.BackgroundTransparency = 1
-        empty.Text = "Không tìm thấy mục tiêu trong map"
+        empty.Text = "Không có người chơi nào khác"
         empty.TextColor3 = TXT_DIM
         empty.Font = Enum.Font.Gotham
         empty.TextSize = 10
+        empty.Parent = targetScroll
     end
 end
 
-mkBtn(telePage, "↻  Làm mới danh sách mục tiêu", refreshMapTargets)
-mkBtn(telePage, "TELEPORT  →  Mục tiêu đã chọn", function(btn)
+mkBtn(telePage, "↻  CẬP NHẬT DANH SÁCH + KHOẢNG CÁCH", refreshMapTargets)
+mkBtn(telePage, "TELEPORT  →  NGƯỜI CHƠI ĐÃ CHỌN", function(btn)
     local targetRoot = getMapTargetRoot(selectedFlyTarget)
     local myRoot = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
     if targetRoot and myRoot then
-        myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 4)
+        myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3)
     else
-        btn.Text = "   Hãy chọn mục tiêu hợp lệ trước"
+        btn.Text = "   HÃY CHỌN NGƯỜI CHƠI CÒN TRONG GAME"
     end
 end)
 refreshMapTargets()
