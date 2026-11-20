@@ -1082,6 +1082,15 @@ local killerOldCameraMode, killerOldMinZoom, killerOldMaxZoom
 local killerLastAttack = 0
 local killerPromptProtection = false
 local protectedPrompts = {}
+local killerWeaponLocation = nil
+local killerWeaponReady = false
+local killerSpinAngle = 0
+local killerEquipping = false
+local killerLastSecondary = 0
+local killerAttackDelay = 0.02
+local killerSecondaryDelay = 0.08
+local killerExtendedRange = 5000
+local killerMultiTargetBusy = false
 
 mkSec(killerPage, "KILLER  /  CHỌN MỤC TIÊU")
 local killerTargetLabel = Instance.new("TextLabel", killerPage)
@@ -1187,7 +1196,7 @@ local function killerFindWeapon()
                 local handle = item:FindFirstChild("Handle")
                 if handle and handle:IsA("BasePart") then
                     local distance = (handle.Position - root.Position).Magnitude
-                    if distance <= 80 and (not nearestDistance or distance < nearestDistance) then
+                    if distance <= 200 and (not nearestDistance or distance < nearestDistance) then
                         nearestTool, nearestDistance = item, distance
                     end
                 end
@@ -1220,15 +1229,28 @@ local function killerSetActive(enabled)
         pl.CameraMinZoomDistance, pl.CameraMaxZoomDistance = 0.5, 0.5
         tg.noclip = true
         tg.autoFly = false
+        killerWeaponReady = false
+        killerEquipping = false
+        killerMultiTargetBusy = false
         killerFindWeapon()
     else
         pl.CameraMode = killerOldCameraMode or Enum.CameraMode.Classic
         pl.CameraMinZoomDistance = killerOldMinZoom or 0.5
         pl.CameraMaxZoomDistance = killerOldMaxZoom or 128
         tg.noclip = false
+        killerMultiTargetBusy = false
     end
     return true
 end
+
+mkBtn(killerPage, "SET VỊ TRÍ LẤY VŨ KHÍ", function(btn)
+    local char = pl.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if root then
+        killerWeaponLocation = root.CFrame
+        btn.Text = "   ✔ ĐÃ LƯU VỊ TRÍ VŨ KHÍ"
+    end
+end)
 
 mkTog(killerPage, "KILLER  •  BẬT / TẮT", false, function(enabled)
     if not killerSetActive(enabled) then
@@ -1265,27 +1287,118 @@ end)
 
 RS.Heartbeat:Connect(function()
     if not killerActive then return end
-    local targetRoot = getMapTargetRoot(killerTarget)
     local character = pl.Character
-    local myRoot = character and character:FindFirstChild("HumanoidRootPart")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local targetCharacter = killerTarget and killerTarget.Character
-    local targetHead = targetCharacter and targetCharacter:FindFirstChild("Head")
-    if not targetRoot or not myRoot or not humanoid or humanoid.Health <= 0 or not targetHead then
-        killerSetActive(false)
+    local myRoot = character and character:FindFirstChild("HumanoidRootPart")
+
+    -- Chết/chưa hồi sinh: chờ, KHÔNG tự tắt killer.
+    if not character or not humanoid or humanoid.Health <= 0 or not myRoot then
+        killerWeaponReady = false
         return
     end
-    myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 4, 0)
-    myRoot.AssemblyLinearVelocity = Vector3.zero
-    cam = workspace.CurrentCamera or cam
-    if cam then
-        cam.CameraSubject = humanoid
-        cam.CFrame = CFrame.new(cam.CFrame.Position, targetHead.Position)
+
+    -- Sau hồi sinh: về vị trí đã lưu, lấy vũ khí, rồi tiếp tục killer.
+    if not killerWeaponReady then
+        if not killerEquipping then
+            killerEquipping = true
+            task.spawn(function()
+                if killerWeaponLocation and myRoot.Parent then
+                    pcall(function() myRoot.CFrame = killerWeaponLocation end)
+                    task.wait(0.15)
+                end
+                local tool = killerFindWeapon()
+                if tool then killerWeaponReady = true end
+                killerEquipping = false
+            end)
+        end
+        return
     end
+
+    -- Thu thập tất cả target hợp lệ trong server (auto target / kill all / nearest).
+    local validTargets = {}
+    for _, p in ipairs(P:GetPlayers()) do
+        if p ~= pl then
+            local r = getMapTargetRoot(p)
+            local tChar = p.Character
+            local tHead = tChar and tChar:FindFirstChild("Head")
+            if r and tHead then
+                table.insert(validTargets, {
+                    player = p, root = r, head = tHead,
+                    distance = (r.Position - myRoot.Position).Magnitude
+                })
+            end
+        end
+    end
+    if #validTargets == 0 then return end
+    table.sort(validTargets, function(a, b) return a.distance < b.distance end)
+
+    -- Target hiện tại chết → tự chọn gần nhất (nearest / auto target).
+    local currentValid = false
+    for _, t in ipairs(validTargets) do
+        if t.player == killerTarget then currentValid = true break end
+    end
+    if not currentValid then
+        killerTarget = validTargets[1].player
+        killerTargetLabel.Text = "ĐÃ CHỌN: " .. killerTarget.DisplayName
+        killerTargetLabel.TextColor3 = GREEN
+    end
+
+    -- Tìm target chính.
+    local mainTarget
+    for _, t in ipairs(validTargets) do
+        if t.player == killerTarget then mainTarget = t break end
+    end
+    mainTarget = mainTarget or validTargets[1]
+
+    -- Bay tới + xoáy quanh target chính.
+    killerSpinAngle = killerSpinAngle + math.rad(360) * (1/60)
+    local radius = 5
+    local offset = Vector3.new(math.sin(killerSpinAngle) * radius, 4, math.cos(killerSpinAngle) * radius)
+    myRoot.CFrame = CFrame.new(mainTarget.root.Position + offset, mainTarget.root.Position + Vector3.new(0, 4, 0))
+    myRoot.AssemblyLinearVelocity = Vector3.zero
+    myRoot.AssemblyAngularVelocity = Vector3.zero
+
+    cam = workspace.CurrentCamera or cam
+    if cam and mainTarget.head then
+        cam.CameraSubject = humanoid
+        cam.CFrame = CFrame.new(cam.CFrame.Position, mainTarget.head.Position)
+    end
+
     local tool = killerFindWeapon()
-    if tool and tool.Parent == character and os.clock() - killerLastAttack >= 0.18 then
-        killerLastAttack = os.clock()
-        pcall(function() tool:Activate() end)
+    if tool and tool.Parent == character then
+        -- Attack chính: rapid / no cooldown / instant / spam.
+        if os.clock() - killerLastAttack >= killerAttackDelay then
+            killerLastAttack = os.clock()
+            pcall(function() tool:Activate() end)
+        end
+
+        -- Multi-target / kill all / mass kill / kill aura / silent kill.
+        -- Mỗi chu kỳ: teleport tới 1 target phụ trong range mở rộng, đánh, quay về.
+        if not killerMultiTargetBusy and os.clock() - killerLastSecondary >= killerSecondaryDelay then
+            killerLastSecondary = os.clock()
+            local secondary
+            for _, t in ipairs(validTargets) do
+                if t.player ~= killerTarget and t.distance <= killerExtendedRange then
+                    secondary = t
+                    break
+                end
+            end
+            if secondary then
+                killerMultiTargetBusy = true
+                task.spawn(function()
+                    local savedCF = myRoot.CFrame
+                    pcall(function()
+                        myRoot.CFrame = CFrame.new(secondary.root.Position + Vector3.new(0, 3, 0),
+                                                    secondary.head.Position)
+                    end)
+                    pcall(function() tool:Activate() end)
+                    task.wait(0.03)
+                    pcall(function() tool:Activate() end)
+                    pcall(function() myRoot.CFrame = savedCF end)
+                    killerMultiTargetBusy = false
+                end)
+            end
+        end
     end
 end)
 
@@ -1371,7 +1484,7 @@ task.spawn(function()
         pcall(function()
             pingLbl.Text = ping .. " ms"
             fpsLbl.Text = f .. " FPS"
-            memLbl.Text = (function() local ok2, m = pcall(function() return ST:GetTotalMemoryUsageMb() end) return ok2 and m and math.floor(m) .. " MB" or "--" end)()
+            memLbl.Text = (function() local ok2, m = pcall(function() return ST:GetTotalMemoryUsageMB() end) return ok2 and m and math.floor(m) .. " MB" or "--" end)()
             nameLbl.Text = pl.Name
             local c = pl.Character
             if c then
