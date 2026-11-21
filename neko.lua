@@ -31,7 +31,7 @@ sg.Name = "NekoModern"
 sg.ResetOnSpawn = false
 sg.IgnoreGuiInset = true
 sg.DisplayOrder = 9999
-sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling -- Fix lỗi UI đen
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 sg.Parent = gp
 
 local stt = {ws = 16, jp = 50}
@@ -48,11 +48,10 @@ local flyAttachment = nil
 local flyAlignPosition = nil
 local spinAccum = 0
 
--- ESP System (2D Box / Rainbow Tracer / Name + Distance)
+-- ESP System
 local espTable = {}
 local espFlags = {line = false, box = false, info = false}
 
--- Bộ đếm ESP nhỏ ở góc trái dưới, tự căn theo độ phân giải điện thoại.
 local espCounter = Instance.new("TextLabel")
 espCounter.Name = "ESP_PlayerCounter"
 espCounter.Size = UDim2.fromOffset(104, 25)
@@ -85,7 +84,7 @@ local function makeESPObject(player)
         return o
     end
     data.line = frame(sg)
-    data.line2 = frame(sg) -- Đoạn line thứ hai, dùng để bỏ qua phần nằm sau nhân vật chính.
+    data.line2 = frame(sg)
     data.box = frame(sg)
     data.box.BackgroundTransparency = 1
     data.box.BorderSizePixel = 0
@@ -125,10 +124,8 @@ RS.RenderStepped:Connect(function()
     local espEnabled = espFlags.line or espFlags.box or espFlags.info
     espCounter.Visible = espEnabled
     espCounter.Position = UDim2.new(0, 9, 1, -9)
-    -- Gốc line nằm chính giữa sát mép dưới màn hình.
     local bottom = Vector2.new(viewport.X * 0.5, viewport.Y - 1)
 
-    -- Lấy vùng chiếm màn hình của nhân vật chính để line không vẽ đè xuyên qua người.
     local myMinX, myMinY = math.huge, math.huge
     local myMaxX, myMaxY = -math.huge, -math.huge
     if myChar then
@@ -200,9 +197,6 @@ RS.RenderStepped:Connect(function()
                 local validBox = minX < maxX and minY < maxY
                 if espFlags.line then
                     local target = Vector2.new(center.X, center.Y)
-
-                    -- Tìm đoạn giao giữa line (đáy màn hình -> mục tiêu) và khung nhân vật chính.
-                    -- Phần nằm trong khung nhân vật sẽ bị bỏ, hai phần ngoài vẫn được vẽ.
                     local dx, dy = target.X - bottom.X, target.Y - bottom.Y
                     local tEnter, tExit = 0, 1
                     local intersects = false
@@ -242,7 +236,6 @@ RS.RenderStepped:Connect(function()
                             bottom.X + dx * tExit,
                             bottom.Y + dy * tExit
                         )
-
                         drawLineSegment(data.line, bottom, before, rainbow)
                         drawLineSegment(data.line2, after, target, rainbow)
                     else
@@ -293,26 +286,41 @@ for _, player in ipairs(P:GetPlayers()) do
     if player ~= pl then makeESPObject(player) end
 end
 
--- Aimlock: chỉ chọn người chơi nằm trong vòng FOV cố định trên màn hình.
-RS.RenderStepped:Connect(function()
+-- ==== AIM SYSTEM (patched) ====
+local aimSelectedOnly = false
+local aimAutoAttack = false
+local aimLastAttack = 0
+local aimAttackDelay = 0.05
+
+RS:BindToRenderStep("NekoAimFov", Enum.RenderPriority.Camera.Value - 1, function()
     cam = workspace.CurrentCamera or cam
     if aimFovCircle and cam then
-        local viewport = cam.ViewportSize
-        aimFovCircle.Position = UDim2.fromOffset(viewport.X * 0.5, viewport.Y * 0.5)
+        local vp = cam.ViewportSize
+        aimFovCircle.Position = UDim2.fromOffset(vp.X * 0.5, vp.Y * 0.5)
         aimFovCircle.Size = UDim2.fromOffset(aimFovRadius * 2, aimFovRadius * 2)
         aimFovCircle.Visible = aimFovEnabled and aimFovVisible
     end
+end)
 
+RS:BindToRenderStep("NekoAimLock", Enum.RenderPriority.Camera.Value + 1, function()
     if not tg.aimlock then return end
+    cam = workspace.CurrentCamera or cam
+    if not cam then return end
+
     local myChar = pl.Character
     local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myHrp or not cam then return end
+    if not myHrp then return end
 
-    local screenCenter = cam.ViewportSize * 0.5
-    local closestHead = nil
-    local shortestScreenDist = math.huge
+    local targetList = P:GetPlayers()
+    if aimSelectedOnly and selectedFlyTarget and selectedFlyTarget:IsA("Player") then
+        targetList = {selectedFlyTarget}
+    end
 
-    for _, player in ipairs(P:GetPlayers()) do
+    local vp = cam.ViewportSize
+    local screenCenter = Vector2.new(vp.X * 0.5, vp.Y * 0.5)
+    local closestHead, shortestDist = nil, math.huge
+
+    for _, player in ipairs(targetList) do
         if player ~= pl and player.Character then
             local char = player.Character
             local humanoid = char:FindFirstChildOfClass("Humanoid")
@@ -320,10 +328,10 @@ RS.RenderStepped:Connect(function()
             if humanoid and humanoid.Health > 0 and head then
                 local point, onScreen = cam:WorldToViewportPoint(head.Position)
                 if onScreen and point.Z > 0 then
-                    local screenDist = (Vector2.new(point.X, point.Y) - screenCenter).Magnitude
-                    local insideFov = (not aimFovEnabled) or screenDist <= aimFovRadius
-                    if insideFov and screenDist < shortestScreenDist then
-                        shortestScreenDist = screenDist
+                    local dist = (Vector2.new(point.X, point.Y) - screenCenter).Magnitude
+                    local insideFov = (not aimFovEnabled) or dist <= aimFovRadius
+                    if insideFov and dist < shortestDist then
+                        shortestDist = dist
                         closestHead = head
                     end
                 end
@@ -333,6 +341,11 @@ RS.RenderStepped:Connect(function()
 
     if closestHead then
         cam.CFrame = CFrame.new(cam.CFrame.Position, closestHead.Position)
+        if aimAutoAttack and os.clock() - aimLastAttack >= aimAttackDelay then
+            aimLastAttack = os.clock()
+            local tool = myChar:FindFirstChildOfClass("Tool")
+            if tool then pcall(function() tool:Activate() end) end
+        end
     end
 end)
 
@@ -349,14 +362,12 @@ RS.Heartbeat:Connect(function(dt)
                 hr.AssemblyLinearVelocity = Vector3.new(md.Unit.X * stt.ws, hr.AssemblyLinearVelocity.Y, md.Unit.Z * stt.ws) 
             end 
         end
-        -- Spin Bot
         if spinState.on then 
             spinAccum = spinAccum + math.rad(spinState.speed * 360) * 0.016 
             hr.CFrame = CFrame.new(hr.Position) * CFrame.Angles(0, spinAccum, 0) 
         end
     end
     
-    -- Auto Fly: dịch chuyển trực tiếp lên phía trên mục tiêu đã chọn.
     if tg.autoFly then
         local myHR = c and c:FindFirstChild("HumanoidRootPart")
         local targetHR, targetHum
@@ -423,7 +434,6 @@ mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local mainScale = Instance.new("UIScale", main)
 local function updateMenuScale()
-    -- Menu chiếm gần toàn màn hình, không thu nhỏ theo kích thước cố định.
     mainScale.Scale = 1
     main.Size = UDim2.new(1, -12, 1, -12)
     main.Position = UDim2.fromScale(0.5, 0.5)
@@ -482,10 +492,8 @@ closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextSize = 13
 closeBtn.AutoButtonColor = false
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
-closeBtn.MouseButton1Click:Connect(function() main.Visible = false end) -- Ẩn menu, không tắt các chức năng đang bật
+closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
 
--- Menu cố định chính giữa màn hình, không có bong bóng nổi.
--- Chạm đồng thời 4 ngón để mở lại khi menu đang ẩn.
 local activeTouches = {}
 local function countTouches()
     local n = 0
@@ -506,7 +514,6 @@ UIS.InputEnded:Connect(function(input)
     end
 end)
 
--- Tabs
 local sideBar = Instance.new("Frame", main)
 sideBar.Size = UDim2.new(1, -24, 0, 42)
 sideBar.Position = UDim2.new(0, 12, 0, 50)
@@ -691,7 +698,6 @@ mkSec(movePage, "MOVEMENT")
 mkSli(movePage, "Walk Speed", 16, 100, 16, function(v) stt.ws = math.clamp(v, 16, 100) end)
 mkTog(movePage, "Infinite Jump", false, function(s) tg.infJump = s end)
 
--- Infinite Jump: xử lý trực tiếp mỗi lần người chơi nhấn nút nhảy.
 UIS.JumpRequest:Connect(function()
     if not tg.infJump then return end
     local character = pl.Character
@@ -731,8 +737,6 @@ mkSli(plPage, "Spin Speed", 1, 20, 5, function(v) spinState.speed = v end)
 mkTog(plPage, "Noclip", false, function(s) tg.noclip = s end)
 
 mkSec(plPage, "RENDER & UTILS")
--- EXTREME FPS: aggressive but reversible local visual reduction.
--- Every changed property is snapshotted once and restored when the toggle is disabled.
 local fpsSaved = setmetatable({}, {__mode = "k"})
 local fpsOldShadows = L.GlobalShadows
 local fpsOldEnvironment = {}
@@ -752,8 +756,6 @@ local function fpsSet(obj, property, value)
 end
 local function fpsOptimizeObject(obj)
     if not tg.fps or not obj then return end
-    -- Giảm tải hiệu ứng nặng nhưng giữ nguyên hậu kỳ, ánh sáng, sương,
-    -- texture và vật liệu để tránh hình ảnh bị chói hoặc quá trống.
     if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
         or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
         fpsSet(obj, "Enabled", false)
@@ -774,7 +776,6 @@ local function setFPSBoost(enabled)
         fpsDescendantConnection = game.DescendantAdded:Connect(function(obj)
             if tg.fps then fpsOptimizeObject(obj) end
         end)
-        -- Chia nhỏ lượt quét để tránh khựng mạnh ngay lúc bật FPS.
         task.spawn(function()
             local descendants = game:GetDescendants()
             for i, obj in ipairs(descendants) do
@@ -809,7 +810,6 @@ mkBtn(plPage, "Rejoin Server", function() TS:Teleport(game.PlaceId, pl) end)
 local telePage = pages["TELE"]
 mkSec(telePage, "AUTO FLY  /  FOLLOW TARGET")
 
--- Dropdown chỉ liệt kê NGƯỜI CHƠI thật; dùng chung cho Teleport và Auto Fly.
 local selectedTargetLabel = Instance.new("TextLabel", telePage)
 selectedTargetLabel.Size = UDim2.new(1, -8, 0, 22)
 selectedTargetLabel.BackgroundTransparency = 1
@@ -1051,6 +1051,12 @@ mkTog(aimPage, "Hiện / Ẩn vòng FOV", false, function(s)
     aimFovVisible = s
     if aimFovCircle then aimFovCircle.Visible = aimFovEnabled and s end
 end)
+mkTog(aimPage, "Chỉ aimlock người đã chọn (dropdown TELE)", false, function(s)
+    aimSelectedOnly = s
+end)
+mkTog(aimPage, "Tự động bắn / đánh khi aimlock", false, function(s)
+    aimAutoAttack = s
+end)
 local fovFixedHint = Instance.new("TextLabel", aimPage)
 fovFixedHint.Size = UDim2.new(1, -8, 0, 30)
 fovFixedHint.BackgroundColor3 = BG_SEC
@@ -1091,6 +1097,58 @@ local killerAttackDelay = 0.02
 local killerSecondaryDelay = 0.08
 local killerExtendedRange = 5000
 local killerMultiTargetBusy = false
+
+-- === Killer tool cycle (1→2→3→4→5) ===
+local killerToolCache = {}
+local killerToolIdx = 0
+local killerLastToolRefresh = 0
+local killerLastToolSwitch = 0
+local killerToolSwitchDelay = 0.4
+
+local function killerRefreshToolCache()
+    killerToolCache = {}
+    local backpack = pl:FindFirstChildOfClass("Backpack")
+    if backpack then
+        for _, t in ipairs(backpack:GetChildren()) do
+            if t:IsA("Tool") then table.insert(killerToolCache, t) end
+        end
+    end
+    local char = pl.Character
+    if char then
+        for _, t in ipairs(char:GetChildren()) do
+            if t:IsA("Tool") then table.insert(killerToolCache, t) end
+        end
+    end
+end
+
+local function killerEquipNextTool()
+    if os.clock() - killerLastToolRefresh >= 2 then
+        killerRefreshToolCache()
+        killerLastToolRefresh = os.clock()
+    end
+    if #killerToolCache == 0 then
+        killerFindWeapon()
+        killerRefreshToolCache()
+    end
+    if #killerToolCache == 0 then return nil end
+
+    local char = pl.Character
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+
+    local equipped = char:FindFirstChildOfClass("Tool")
+    if os.clock() - killerLastToolSwitch < killerToolSwitchDelay then
+        return equipped
+    end
+
+    killerLastToolSwitch = os.clock()
+    killerToolIdx = killerToolIdx % #killerToolCache + 1
+    local tool = killerToolCache[killerToolIdx]
+    if tool and tool.Parent ~= char then
+        pcall(function() humanoid:EquipTool(tool) end)
+    end
+    return tool
+end
 
 mkSec(killerPage, "KILLER  /  CHỌN MỤC TIÊU")
 local killerTargetLabel = Instance.new("TextLabel", killerPage)
@@ -1233,6 +1291,10 @@ local function killerSetActive(enabled)
         killerEquipping = false
         killerMultiTargetBusy = false
         killerFindWeapon()
+        killerRefreshToolCache()
+        killerLastToolRefresh = os.clock()
+        killerLastToolSwitch = 0
+        killerToolIdx = 0
     else
         pl.CameraMode = killerOldCameraMode or Enum.CameraMode.Classic
         pl.CameraMinZoomDistance = killerOldMinZoom or 0.5
@@ -1291,13 +1353,11 @@ RS.Heartbeat:Connect(function()
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local myRoot = character and character:FindFirstChild("HumanoidRootPart")
 
-    -- Chết/chưa hồi sinh: chờ, KHÔNG tự tắt killer.
     if not character or not humanoid or humanoid.Health <= 0 or not myRoot then
         killerWeaponReady = false
         return
     end
 
-    -- Sau hồi sinh: về vị trí đã lưu, lấy vũ khí, rồi tiếp tục killer.
     if not killerWeaponReady then
         if not killerEquipping then
             killerEquipping = true
@@ -1308,13 +1368,14 @@ RS.Heartbeat:Connect(function()
                 end
                 local tool = killerFindWeapon()
                 if tool then killerWeaponReady = true end
+                killerRefreshToolCache()
+                killerLastToolRefresh = os.clock()
                 killerEquipping = false
             end)
         end
         return
     end
 
-    -- Thu thập tất cả target hợp lệ trong server (auto target / kill all / nearest).
     local validTargets = {}
     for _, p in ipairs(P:GetPlayers()) do
         if p ~= pl then
@@ -1332,7 +1393,6 @@ RS.Heartbeat:Connect(function()
     if #validTargets == 0 then return end
     table.sort(validTargets, function(a, b) return a.distance < b.distance end)
 
-    -- Target hiện tại chết → tự chọn gần nhất (nearest / auto target).
     local currentValid = false
     for _, t in ipairs(validTargets) do
         if t.player == killerTarget then currentValid = true break end
@@ -1343,14 +1403,12 @@ RS.Heartbeat:Connect(function()
         killerTargetLabel.TextColor3 = GREEN
     end
 
-    -- Tìm target chính.
     local mainTarget
     for _, t in ipairs(validTargets) do
         if t.player == killerTarget then mainTarget = t break end
     end
     mainTarget = mainTarget or validTargets[1]
 
-    -- Bay tới + xoáy quanh target chính.
     killerSpinAngle = killerSpinAngle + math.rad(360) * (1/60)
     local radius = 5
     local offset = Vector3.new(math.sin(killerSpinAngle) * radius, 4, math.cos(killerSpinAngle) * radius)
@@ -1364,16 +1422,13 @@ RS.Heartbeat:Connect(function()
         cam.CFrame = CFrame.new(cam.CFrame.Position, mainTarget.head.Position)
     end
 
-    local tool = killerFindWeapon()
+    local tool = killerEquipNextTool()
     if tool and tool.Parent == character then
-        -- Attack chính: rapid / no cooldown / instant / spam.
         if os.clock() - killerLastAttack >= killerAttackDelay then
             killerLastAttack = os.clock()
             pcall(function() tool:Activate() end)
         end
 
-        -- Multi-target / kill all / mass kill / kill aura / silent kill.
-        -- Mỗi chu kỳ: teleport tới 1 target phụ trong range mở rộng, đánh, quay về.
         if not killerMultiTargetBusy and os.clock() - killerLastSecondary >= killerSecondaryDelay then
             killerLastSecondary = os.clock()
             local secondary
