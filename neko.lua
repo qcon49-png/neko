@@ -6,6 +6,13 @@ local L = game:GetService("Lighting")
 local TS = game:GetService("TeleportService")
 local ST = game:GetService("Stats")
 
+-- ===== Cleanup FPS Boost từ lần execute trước (nếu có) =====
+local env = (getgenv and getgenv()) or _G
+if env.__NekoFPSBoostCleanup then
+    pcall(env.__NekoFPSBoostCleanup)
+    env.__NekoFPSBoostCleanup = nil
+end
+
 local ok, err = pcall(function()
 local pl = P.LocalPlayer
 local cam = workspace.CurrentCamera
@@ -35,9 +42,8 @@ sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 sg.Parent = gp
 
 local stt = {ws = 16, jp = 50}
-local tg = {esp = false, noclip = false, fps = false, infJump = false, autoFly = false}
+local tg = {esp = false, noclip = false, infJump = false, autoFly = false}
 local spinState = {on = false, speed = 5}
-local autoFlyStiffness = 50
 local selectedFlyTarget = nil
 local flyWasEnabled = false
 local flyAttachment = nil
@@ -733,72 +739,325 @@ end
 
 mkTog(plPage, "Noclip", false, function(s) tg.noclip = s end)
 
+-- =====================================================
+-- ===== EXTREME FPS BOOST v2 (BFS + Queue + Batch) =====
+-- =====================================================
 mkSec(plPage, "RENDER & UTILS")
-local fpsSaved = setmetatable({}, {__mode = "k"})
-local fpsOldShadows = L.GlobalShadows
-local fpsOldEnvironment = {}
-local fpsDescendantConnection = nil
-local fpsApplying = false
-local function fpsRemember(obj, property)
-    if not obj or not obj.Parent then return end
-    fpsSaved[obj] = fpsSaved[obj] or {}
-    if fpsSaved[obj][property] == nil then
-        local okRead, oldValue = pcall(function() return obj[property] end)
-        if okRead then fpsSaved[obj][property] = oldValue end
+
+local BOOST_PARTICLES        = true
+local BOOST_LIGHTING         = true
+local BOOST_TERRAIN          = true
+local BOOST_POSTFX           = true
+local BOOST_SOUND            = true
+local ALLOW_CHARACTER_BOOST  = false
+
+local ZERO_RANGE = NumberRange.new(0)
+
+local boostEnabled = false
+local savedValues = setmetatable({}, {__mode = "k"})
+local savedGlobalShadows = L.GlobalShadows
+local descendantConn = nil
+local descendantConn2 = nil
+local gen = 0
+local restoring = false
+local pendingBoost = nil
+local pending, pHead, pTail = {}, 1, 0
+local draining = false
+
+local function remember(obj, prop)
+    local t = savedValues[obj]
+    if not t then t = {}; savedValues[obj] = t end
+    if t[prop] == nil then t[prop] = obj[prop] end
+end
+
+local function put(obj, prop, value)
+    if obj[prop] == value then return end
+    remember(obj, prop)
+    obj[prop] = value
+end
+
+local function setProp(obj, prop, value)
+    pcall(put, obj, prop, value)
+end
+
+-- ===== Handlers theo ClassName =====
+local HANDLERS = {}
+HANDLERS.Terrain = function() end
+local function disableFn(o) put(o, "Enabled", false) end
+
+if BOOST_PARTICLES then
+    for _, cn in ipairs({"Trail", "Beam", "Fire", "Smoke", "Sparkles"}) do
+        HANDLERS[cn] = disableFn
+    end
+    HANDLERS.ParticleEmitter = function(o)
+        put(o, "Enabled", false)
+        put(o, "Lifetime", ZERO_RANGE)
     end
 end
-local function fpsSet(obj, property, value)
-    fpsRemember(obj, property)
-    pcall(function() obj[property] = value end)
-end
-local function fpsOptimizeObject(obj)
-    if not tg.fps or not obj then return end
-    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
-        or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-        fpsSet(obj, "Enabled", false)
-    elseif obj:IsA("BasePart") then
-        fpsSet(obj, "CastShadow", false)
-        fpsSet(obj, "Reflectance", 0)
+
+if BOOST_POSTFX then
+    for _, cn in ipairs({"BloomEffect", "BlurEffect", "DepthOfFieldEffect",
+                         "SunRaysEffect", "ColorCorrectionEffect"}) do
+        HANDLERS[cn] = disableFn
     end
 end
-local function setFPSBoost(enabled)
-    tg.fps = enabled
+
+if BOOST_LIGHTING then
+    HANDLERS.Atmosphere = function(o)
+        put(o, "Density", 0)
+        put(o, "Haze", 0)
+    end
+    local function noShadow(o) put(o, "Shadows", false) end
+    HANDLERS.PointLight   = noShadow
+    HANDLERS.SpotLight    = noShadow
+    HANDLERS.SurfaceLight = noShadow
+end
+
+if BOOST_SOUND then
+    HANDLERS.Sound = function(o) put(o, "RollOffMaxDistance", 50) end
+end
+
+local PART_BOOST = BOOST_LIGHTING
+
+-- ===== Tối ưu 1 object =====
+local function optimizeObject(obj)
+    if not boostEnabled or not obj then return end
+    local h = HANDLERS[obj.ClassName]
+    if h then
+        h(obj)
+    elseif PART_BOOST and obj:IsA("BasePart") then
+        put(obj, "CastShadow", false)
+        put(obj, "Reflectance", 0)
+    end
+end
+
+local function runBatch(batch, n)
+    for i = 1, n do optimizeObject(batch[i]) end
+end
+
+local function flushBatch(batch, n)
+    if n == 0 then return end
+    if not pcall(runBatch, batch, n) then
+        for i = 1, n do pcall(optimizeObject, batch[i]) end
+    end
+end
+
+-- ===== Skip rules =====
+local SKIP_SUBTREE = {
+    ScreenGui = true, BillboardGui = true, SurfaceGui = true,
+    Humanoid = true, Animator = true, Camera = true,
+}
+
+local function skipSubtree(o, char)
+    if SKIP_SUBTREE[o.ClassName] then return true end
+    if char then
+        if o == char then return not ALLOW_CHARACTER_BOOST end
+        if o.ClassName == "Tool" and o.Parent == char then return true end
+    end
+    return false
+end
+
+local function shouldSkipAdded(o)
+    if o:FindFirstAncestorWhichIsA("LayerCollector") then return true end
+    local c2 = workspace.CurrentCamera
+    if c2 and o:IsDescendantOf(c2) then return true end
+    local char = pl.Character
+    if char and o:IsDescendantOf(char) then
+        if not ALLOW_CHARACTER_BOOST then return true end
+        local tool = o:FindFirstAncestorWhichIsA("Tool")
+        if tool and tool.Parent == char then return true end
+    end
+    return false
+end
+
+-- ===== Môi trường =====
+local function applyEnvironment()
+    if BOOST_LIGHTING then
+        setProp(L, "GlobalShadows", false)
+        setProp(L, "ShadowSoftness", 0)
+        setProp(L, "EnvironmentDiffuseScale", 0)
+        setProp(L, "EnvironmentSpecularScale", 0)
+        setProp(L, "ExposureCompensation", -0.5)
+    end
+    if BOOST_TERRAIN then
+        local terrain = workspace:FindFirstChildOfClass("Terrain")
+        if terrain then
+            setProp(terrain, "WaterWaveSize", 0)
+            setProp(terrain, "WaterWaveSpeed", 0)
+            setProp(terrain, "WaterTransparency", 1)
+            setProp(terrain, "Decoration", false)
+        end
+    end
+end
+
+-- ===== BFS scan =====
+local function scan(myGen)
+    local q, head, tail = {}, 1, 0
+    local function push(x) tail = tail + 1; q[tail] = x end
+
+    push(workspace)
+    push(L)
+    local pg = pl:FindFirstChildOfClass("PlayerGui")
+    if pg then push(pg) end
+
+    local char = pl.Character
+    local batch, bn = {}, 0
+
+    while head <= tail do
+        if gen ~= myGen then return end
+        local node = q[head]
+        q[head] = nil
+        head = head + 1
+
+        bn = bn + 1
+        batch[bn] = node
+
+        local kids = node:GetChildren()
+        for i = 1, #kids do
+            local k = kids[i]
+            if not skipSubtree(k, char) then push(k) end
+        end
+
+        if bn >= 200 then
+            flushBatch(batch, bn)
+            table.clear(batch)
+            bn = 0
+            task.wait()
+        end
+    end
+
+    if gen == myGen then flushBatch(batch, bn) end
+end
+
+-- ===== Queue cho DescendantAdded =====
+local dbatch = {}
+
+local function drain(g)
+    while pHead <= pTail do
+        if gen ~= g or not boostEnabled then break end
+        local cnt, bn = 0, 0
+        while pHead <= pTail and cnt < 200 do
+            local o = pending[pHead]
+            pending[pHead] = nil
+            pHead = pHead + 1
+            cnt = cnt + 1
+            if o and o.Parent and not shouldSkipAdded(o) then
+                bn = bn + 1
+                dbatch[bn] = o
+            end
+        end
+        flushBatch(dbatch, bn)
+        table.clear(dbatch)
+        if pHead <= pTail then RS.Heartbeat:Wait() end
+    end
+    draining = false
+    if boostEnabled and pHead <= pTail then
+        draining = true
+        task.defer(drain, gen)
+    end
+end
+
+local function enqueue(o)
+    pTail = pTail + 1
+    pending[pTail] = o
+    if not draining then
+        draining = true
+        task.defer(drain, gen)
+    end
+end
+
+local function onAdded(o)
+    if not boostEnabled then return end
+    if HANDLERS[o.ClassName] or (PART_BOOST and o:IsA("BasePart")) then
+        enqueue(o)
+    end
+end
+
+local function disconnectAll()
+    if descendantConn then descendantConn:Disconnect(); descendantConn = nil end
+    if descendantConn2 then descendantConn2:Disconnect(); descendantConn2 = nil end
+    pending, pHead, pTail = {}, 1, 0
+end
+
+-- ===== Restore 100% =====
+local function restoreAll(sync)
+    local objs, props, n = {}, {}, 0
+    for o, p in pairs(savedValues) do
+        n = n + 1
+        objs[n] = o
+        props[n] = p
+    end
+    table.clear(savedValues)
+
+    local function restoreRange(i, j)
+        for k = i, j do
+            local o, p = objs[k], props[k]
+            for prop, v in pairs(p) do o[prop] = v end
+        end
+    end
+
+    local i = 1
+    while i <= n do
+        local j = math.min(i + 299, n)
+        if not pcall(restoreRange, i, j) then
+            for k = i, j do pcall(restoreRange, k, k) end
+        end
+        i = j + 1
+        if (not sync) and i <= n then task.wait() end
+    end
+
+    pcall(function() L.GlobalShadows = savedGlobalShadows end)
+end
+
+-- ===== Bật / Tắt =====
+local function setBoost(enabled)
+    if restoring then
+        pendingBoost = enabled
+        return
+    end
+    if enabled == boostEnabled then return end
+    boostEnabled = enabled
+    gen = gen + 1
+    local myGen = gen
+
     if enabled then
-        fpsOldShadows = L.GlobalShadows
-        fpsOldEnvironment = {
-            GlobalShadows = L.GlobalShadows,
-        }
-        L.GlobalShadows = false
-        if fpsDescendantConnection then fpsDescendantConnection:Disconnect() end
-        fpsDescendantConnection = game.DescendantAdded:Connect(function(obj)
-            if tg.fps then fpsOptimizeObject(obj) end
-        end)
-        task.spawn(function()
-            local descendants = game:GetDescendants()
-            for i, obj in ipairs(descendants) do
-                if not tg.fps then break end
-                fpsOptimizeObject(obj)
-                if i % 250 == 0 then task.wait() end
-            end
-        end)
+        savedGlobalShadows = L.GlobalShadows
+        applyEnvironment()
+        disconnectAll()
+        descendantConn  = workspace.DescendantAdded:Connect(onAdded)
+        descendantConn2 = L.DescendantAdded:Connect(onAdded)
+        task.spawn(scan, myGen)
     else
-        if fpsDescendantConnection then
-            fpsDescendantConnection:Disconnect()
-            fpsDescendantConnection = nil
-        end
-        for obj, properties in pairs(fpsSaved) do
-            if obj and obj.Parent then
-                for property, oldValue in pairs(properties) do
-                    pcall(function() obj[property] = oldValue end)
-                end
+        disconnectAll()
+        restoring = true
+        task.spawn(function()
+            restoreAll(false)
+            restoring = false
+            if pendingBoost ~= nil then
+                local p = pendingBoost
+                pendingBoost = nil
+                setBoost(p)
             end
-        end
-        table.clear(fpsSaved)
-        L.GlobalShadows = fpsOldEnvironment.GlobalShadows ~= nil and fpsOldEnvironment.GlobalShadows or fpsOldShadows
-        table.clear(fpsOldEnvironment)
+        end)
     end
 end
-mkTog(plPage, "EXTREME FPS  •  Giảm tải hình ảnh tối đa", false, setFPSBoost)
+
+mkTog(plPage, "EXTREME FPS  •  Giảm tải hình ảnh tối đa", false, function(s)
+    setBoost(s)
+end)
+
+-- ===== Register cleanup cho lần re-execute sau =====
+env.__NekoFPSBoostCleanup = function()
+    gen = gen + 1
+    disconnectAll()
+    if boostEnabled then
+        boostEnabled = false
+        restoring = true
+        restoreAll(true)  -- đồng bộ để instance mới không lưu nhầm giá trị đã boost
+        restoring = false
+    end
+end
+
 mkSli(plPage, "Camera FOV", 70, 120, 70, function(v) cam.FieldOfView = v end)
 mkBtn(plPage, "Reset Character", function() if pl.Character then pl.Character:BreakJoints() end end)
 mkBtn(plPage, "Rejoin Server", function() TS:Teleport(game.PlaceId, pl) end)
