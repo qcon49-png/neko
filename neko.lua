@@ -35,11 +35,7 @@ sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 sg.Parent = gp
 
 local stt = {ws = 16, jp = 50}
-local tg = {esp = false, noclip = false, fps = false, infJump = false, aimlock = false, autoFly = false}
-local aimFovEnabled = false
-local aimFovVisible = false
-local aimFovRadius = 50
-local aimFovCircle
+local tg = {esp = false, noclip = false, fps = false, infJump = false, autoFly = false}
 local spinState = {on = false, speed = 5}
 local autoFlyStiffness = 50
 local selectedFlyTarget = nil
@@ -286,69 +282,6 @@ for _, player in ipairs(P:GetPlayers()) do
     if player ~= pl then makeESPObject(player) end
 end
 
--- ==== AIM SYSTEM (patched) ====
-local aimSelectedOnly = false
-local aimAutoAttack = false
-local aimLastAttack = 0
-local aimAttackDelay = 0.05
-
-RS:BindToRenderStep("NekoAimFov", Enum.RenderPriority.Camera.Value - 1, function()
-    cam = workspace.CurrentCamera or cam
-    if aimFovCircle and cam then
-        local vp = cam.ViewportSize
-        aimFovCircle.Position = UDim2.fromOffset(vp.X * 0.5, vp.Y * 0.5)
-        aimFovCircle.Size = UDim2.fromOffset(aimFovRadius * 2, aimFovRadius * 2)
-        aimFovCircle.Visible = aimFovEnabled and aimFovVisible
-    end
-end)
-
-RS:BindToRenderStep("NekoAimLock", Enum.RenderPriority.Camera.Value + 1, function()
-    if not tg.aimlock then return end
-    cam = workspace.CurrentCamera or cam
-    if not cam then return end
-
-    local myChar = pl.Character
-    local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myHrp then return end
-
-    local targetList = P:GetPlayers()
-    if aimSelectedOnly and selectedFlyTarget and selectedFlyTarget:IsA("Player") then
-        targetList = {selectedFlyTarget}
-    end
-
-    local vp = cam.ViewportSize
-    local screenCenter = Vector2.new(vp.X * 0.5, vp.Y * 0.5)
-    local closestHead, shortestDist = nil, math.huge
-
-    for _, player in ipairs(targetList) do
-        if player ~= pl and player.Character then
-            local char = player.Character
-            local humanoid = char:FindFirstChildOfClass("Humanoid")
-            local head = char:FindFirstChild("Head")
-            if humanoid and humanoid.Health > 0 and head then
-                local point, onScreen = cam:WorldToViewportPoint(head.Position)
-                if onScreen and point.Z > 0 then
-                    local dist = (Vector2.new(point.X, point.Y) - screenCenter).Magnitude
-                    local insideFov = (not aimFovEnabled) or dist <= aimFovRadius
-                    if insideFov and dist < shortestDist then
-                        shortestDist = dist
-                        closestHead = head
-                    end
-                end
-            end
-        end
-    end
-
-    if closestHead then
-        cam.CFrame = CFrame.new(cam.CFrame.Position, closestHead.Position)
-        if aimAutoAttack and os.clock() - aimLastAttack >= aimAttackDelay then
-            aimLastAttack = os.clock()
-            local tool = myChar:FindFirstChildOfClass("Tool")
-            if tool then pcall(function() tool:Activate() end) end
-        end
-    end
-end)
-
 -- Background Loops
 RS.Heartbeat:Connect(function(dt)
     local c = pl.Character 
@@ -363,7 +296,7 @@ RS.Heartbeat:Connect(function(dt)
             end 
         end
         if spinState.on then 
-            spinAccum = spinAccum + math.rad(spinState.speed * 360) * 0.016 
+            spinAccum = (spinAccum + math.rad(spinState.speed * 360) * dt) % (math.pi * 2)
             hr.CFrame = CFrame.new(hr.Position) * CFrame.Angles(0, spinAccum, 0) 
         end
     end
@@ -529,8 +462,8 @@ content.Size = UDim2.new(1, -24, 1, -104)
 content.Position = UDim2.new(0, 12, 0, 98)
 content.BackgroundTransparency = 1
 
-local tabs = {"MOVE", "ESP", "PLAYER", "TELE", "AIM", "KILLER", "INFO"}
-local tabLabels = {MOVE="  DI CHUYỂN", ESP="  ESP", PLAYER="  NHÂN VẬT", TELE="  DỊCH CHUYỂN", AIM="  AIM", KILLER="  KILLER", INFO="  THÔNG TIN"}
+local tabs = {"MOVE", "ESP", "PLAYER", "TELE", "INFO"}
+local tabLabels = {MOVE="  DI CHUYỂN", ESP="  ESP", PLAYER="  NHÂN VẬT", TELE="  DỊCH CHUYỂN", INFO="  THÔNG TIN"}
 local pages = {}
 
 local function switchTab(name)
@@ -545,7 +478,7 @@ end
 
 for i, name in ipairs(tabs) do
     local btn = Instance.new("TextButton", sideBar)
-    btn.Size = UDim2.new(1/7, -6, 1, 0)
+    btn.Size = UDim2.new(1/5, -6, 1, 0)
     btn.BackgroundColor3 = (i == 1) and ACCENT or BG_SEC
     btn.Name = "Tab_" .. name
     btn.Text = tabLabels[name] or ("  " .. name)
@@ -733,7 +666,71 @@ mkTog(plPage, "Spin Bot", false, function(s)
     local h = pl.Character and pl.Character:FindFirstChildOfClass("Humanoid")
     if h then h.AutoRotate = not s end
 end)
-mkSli(plPage, "Spin Speed", 1, 20, 5, function(v) spinState.speed = v end)
+
+-- === SPIN SPEED PRESETS (1 / 5 / 10 / MAX=1000 CPS) ===
+local spinPresets = {
+    {label = "1",   value = 1},
+    {label = "5",   value = 5},
+    {label = "10",  value = 10},
+    {label = "MAX", value = 1000},
+}
+local spinPresetButtons = {}
+
+local spinRow = Instance.new("Frame", plPage)
+spinRow.Size = UDim2.new(1, -8, 0, 46)
+spinRow.BackgroundColor3 = BG_CARD
+Instance.new("UICorner", spinRow).CornerRadius = UDim.new(0, 8)
+
+local spinRowLabel = Instance.new("TextLabel", spinRow)
+spinRowLabel.Size = UDim2.new(1, -16, 0, 18)
+spinRowLabel.Position = UDim2.new(0, 10, 0, 4)
+spinRowLabel.BackgroundTransparency = 1
+spinRowLabel.Text = "Spin Speed  (CPS)"
+spinRowLabel.TextColor3 = TXT_DIM
+spinRowLabel.Font = Enum.Font.GothamMedium
+spinRowLabel.TextSize = 11
+spinRowLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local spinBtnRow = Instance.new("Frame", spinRow)
+spinBtnRow.Size = UDim2.new(1, -16, 0, 20)
+spinBtnRow.Position = UDim2.new(0, 8, 0, 22)
+spinBtnRow.BackgroundTransparency = 1
+local spinBtnLayout = Instance.new("UIListLayout", spinBtnRow)
+spinBtnLayout.FillDirection = Enum.FillDirection.Horizontal
+spinBtnLayout.Padding = UDim.new(0, 4)
+spinBtnLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+spinBtnLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+
+local function updateSpinPresetUI(activeBtn)
+    for _, b in ipairs(spinPresetButtons) do
+        local isActive = (b == activeBtn)
+        T:Create(b, TweenInfo.new(0.15), {
+            BackgroundColor3 = isActive and ACCENT or BG_SEC,
+            TextColor3 = isActive and BG_MAIN or TXT_DIM,
+        }):Play()
+    end
+end
+
+for _, preset in ipairs(spinPresets) do
+    local b = Instance.new("TextButton", spinBtnRow)
+    b.Size = UDim2.new(0.25, -4, 1, 0)
+    local isDefault = (spinState.speed == preset.value)
+    b.BackgroundColor3 = isDefault and ACCENT or BG_SEC
+    b.Text = preset.label
+    b.TextColor3 = isDefault and BG_MAIN or TXT_DIM
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 11
+    b.AutoButtonColor = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+
+    b.MouseButton1Click:Connect(function()
+        spinState.speed = preset.value
+        updateSpinPresetUI(b)
+    end)
+
+    table.insert(spinPresetButtons, b)
+end
+
 mkTog(plPage, "Noclip", false, function(s) tg.noclip = s end)
 
 mkSec(plPage, "RENDER & UTILS")
@@ -806,7 +803,7 @@ mkSli(plPage, "Camera FOV", 70, 120, 70, function(v) cam.FieldOfView = v end)
 mkBtn(plPage, "Reset Character", function() if pl.Character then pl.Character:BreakJoints() end end)
 mkBtn(plPage, "Rejoin Server", function() TS:Teleport(game.PlaceId, pl) end)
 
--- TELEPORT & DYNAMIC WAYPOINTS
+-- TELEPORT
 local telePage = pages["TELE"]
 mkSec(telePage, "AUTO FLY  /  FOLLOW TARGET")
 
@@ -949,515 +946,6 @@ mkTog(telePage, "Auto Fly  •  Bám nhanh mục tiêu", false, function(s)
         end
     end
 end)
-
-mkSec(telePage, "DYNAMIC WAYPOINTS")
-local wpContainer = Instance.new("Frame", telePage)
-wpContainer.Size = UDim2.new(1, -8, 0, 0)
-wpContainer.AutomaticSize = Enum.AutomaticSize.Y
-wpContainer.BackgroundTransparency = 1
-Instance.new("UIListLayout", wpContainer).Padding = UDim.new(0, 4)
-
-local wpList = {} 
-local function refreshWPUI()
-    for _, child in ipairs(wpContainer:GetChildren()) do
-        if child:IsA("Frame") then child:Destroy() end
-    end
-    for i, wp in ipairs(wpList) do
-        local row = Instance.new("Frame", wpContainer)
-        row.Size = UDim2.new(1, 0, 0, 32)
-        row.BackgroundColor3 = BG_CARD
-        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
-        
-        local info = Instance.new("TextLabel", row)
-        info.Size = UDim2.new(1, -80, 1, 0)
-        info.Position = UDim2.new(0, 10, 0, 0)
-        info.BackgroundTransparency = 1
-        info.Text = wp.name
-        info.TextColor3 = TXT
-        info.TextXAlignment = Enum.TextXAlignment.Left
-        info.Font = Enum.Font.GothamMedium
-        info.TextSize = 11
-        
-        local goB = Instance.new("TextButton", row)
-        goB.Size = UDim2.new(0, 30, 0, 22)
-        goB.Position = UDim2.new(1, -70, 0.5, -11)
-        goB.BackgroundColor3 = BG_SEC
-        goB.Text = "GO"
-        goB.TextColor3 = GREEN
-        goB.Font = Enum.Font.GothamBold
-        goB.TextSize = 10
-        Instance.new("UICorner", goB).CornerRadius = UDim.new(0, 4)
-        goB.MouseButton1Click:Connect(function()
-            local hr = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
-            if hr then hr.CFrame = wp.cframe end
-        end)
-        
-        local xB = Instance.new("TextButton", row)
-        xB.Size = UDim2.new(0, 30, 0, 22)
-        xB.Position = UDim2.new(1, -34, 0.5, -11)
-        xB.BackgroundColor3 = BG_SEC
-        xB.Text = "✕"
-        xB.TextColor3 = RED
-        xB.Font = Enum.Font.GothamBold
-        xB.TextSize = 10
-        Instance.new("UICorner", xB).CornerRadius = UDim.new(0, 4)
-        xB.MouseButton1Click:Connect(function()
-            table.remove(wpList, i)
-            refreshWPUI()
-        end)
-    end
-end
-
-mkBtn(telePage, "+ Add Current Position", function()
-    local hr = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
-    if hr then
-        table.insert(wpList, {name = "Waypoint " .. (#wpList + 1), cframe = hr.CFrame})
-        refreshWPUI()
-    end
-end)
-wpContainer.Parent = telePage
-
--- AIM PAGE
-local aimPage = pages["AIM"]
-mkSec(aimPage, "AIM LOCK  /  FOV")
-
-aimFovCircle = Instance.new("Frame")
-aimFovCircle.Name = "AimFOVCircle"
-aimFovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-aimFovCircle.Position = UDim2.fromScale(0.5, 0.5)
-aimFovCircle.Size = UDim2.fromOffset(aimFovRadius * 2, aimFovRadius * 2)
-aimFovCircle.BackgroundTransparency = 1
-aimFovCircle.BorderSizePixel = 0
-aimFovCircle.Visible = false
-aimFovCircle.ZIndex = 80
-aimFovCircle.Parent = sg
-local aimFovStroke = Instance.new("UIStroke")
-aimFovStroke.Color = ACCENT
-aimFovStroke.Thickness = 1.5
-aimFovStroke.Transparency = 0.12
-aimFovStroke.Parent = aimFovCircle
-local aimFovCorner = Instance.new("UICorner")
-aimFovCorner.CornerRadius = UDim.new(1, 0)
-aimFovCorner.Parent = aimFovCircle
-
-mkTog(aimPage, "Aim Lock  •  Khóa mục tiêu gần tâm", false, function(s)
-    tg.aimlock = s
-end)
-mkTog(aimPage, "Giới hạn mục tiêu trong FOV", false, function(s)
-    aimFovEnabled = s
-    if aimFovCircle then aimFovCircle.Visible = s and aimFovVisible end
-end)
-mkTog(aimPage, "Hiện / Ẩn vòng FOV", false, function(s)
-    aimFovVisible = s
-    if aimFovCircle then aimFovCircle.Visible = aimFovEnabled and s end
-end)
-mkTog(aimPage, "Chỉ aimlock người đã chọn (dropdown TELE)", false, function(s)
-    aimSelectedOnly = s
-end)
-mkTog(aimPage, "Tự động bắn / đánh khi aimlock", false, function(s)
-    aimAutoAttack = s
-end)
-local fovFixedHint = Instance.new("TextLabel", aimPage)
-fovFixedHint.Size = UDim2.new(1, -8, 0, 30)
-fovFixedHint.BackgroundColor3 = BG_SEC
-fovFixedHint.BackgroundTransparency = 0.12
-fovFixedHint.BorderSizePixel = 0
-fovFixedHint.Text = "FOV FIXED  •  RADIUS 50"
-fovFixedHint.TextColor3 = ACCENT
-fovFixedHint.Font = Enum.Font.GothamBold
-fovFixedHint.TextSize = 11
-Instance.new("UICorner", fovFixedHint).CornerRadius = UDim.new(0, 8)
-
-local aimHint = Instance.new("TextLabel", aimPage)
-aimHint.Size = UDim2.new(1, -8, 0, 42)
-aimHint.BackgroundColor3 = BG_SEC
-aimHint.BackgroundTransparency = 0.12
-aimHint.BorderSizePixel = 0
-aimHint.Text = "FOV cố định tại tâm màn hình. Khi bật giới hạn FOV, Aim Lock chỉ chọn người chơi nằm bên trong vòng."
-aimHint.TextColor3 = TXT_DIM
-aimHint.Font = Enum.Font.Gotham
-aimHint.TextSize = 11
-aimHint.TextWrapped = true
-Instance.new("UICorner", aimHint).CornerRadius = UDim.new(0, 8)
-
--- KILLER PAGE
-local killerPage = pages["KILLER"]
-local killerActive = false
-local killerTarget = nil
-local killerOldCameraMode, killerOldMinZoom, killerOldMaxZoom
-local killerLastAttack = 0
-local killerPromptProtection = false
-local protectedPrompts = {}
-local killerWeaponLocation = nil
-local killerWeaponReady = false
-local killerSpinAngle = 0
-local killerEquipping = false
-local killerLastSecondary = 0
-local killerAttackDelay = 0.02
-local killerSecondaryDelay = 0.08
-local killerExtendedRange = 5000
-local killerMultiTargetBusy = false
-
--- === Killer tool cycle (1→2→3→4→5) ===
-local killerToolCache = {}
-local killerToolIdx = 0
-local killerLastToolRefresh = 0
-local killerLastToolSwitch = 0
-local killerToolSwitchDelay = 0.4
-
-local function killerRefreshToolCache()
-    killerToolCache = {}
-    local backpack = pl:FindFirstChildOfClass("Backpack")
-    if backpack then
-        for _, t in ipairs(backpack:GetChildren()) do
-            if t:IsA("Tool") then table.insert(killerToolCache, t) end
-        end
-    end
-    local char = pl.Character
-    if char then
-        for _, t in ipairs(char:GetChildren()) do
-            if t:IsA("Tool") then table.insert(killerToolCache, t) end
-        end
-    end
-end
-
-local function killerEquipNextTool()
-    if os.clock() - killerLastToolRefresh >= 2 then
-        killerRefreshToolCache()
-        killerLastToolRefresh = os.clock()
-    end
-    if #killerToolCache == 0 then
-        killerFindWeapon()
-        killerRefreshToolCache()
-    end
-    if #killerToolCache == 0 then return nil end
-
-    local char = pl.Character
-    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return nil end
-
-    local equipped = char:FindFirstChildOfClass("Tool")
-    if os.clock() - killerLastToolSwitch < killerToolSwitchDelay then
-        return equipped
-    end
-
-    killerLastToolSwitch = os.clock()
-    killerToolIdx = killerToolIdx % #killerToolCache + 1
-    local tool = killerToolCache[killerToolIdx]
-    if tool and tool.Parent ~= char then
-        pcall(function() humanoid:EquipTool(tool) end)
-    end
-    return tool
-end
-
-mkSec(killerPage, "KILLER  /  CHỌN MỤC TIÊU")
-local killerTargetLabel = Instance.new("TextLabel", killerPage)
-killerTargetLabel.Size = UDim2.new(1, -8, 0, 24)
-killerTargetLabel.BackgroundTransparency = 1
-killerTargetLabel.Text = "MỤC TIÊU: CHƯA CHỌN"
-killerTargetLabel.TextColor3 = ACCENT
-killerTargetLabel.Font = Enum.Font.GothamBold
-killerTargetLabel.TextSize = 11
-killerTargetLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-local killerList = Instance.new("ScrollingFrame", killerPage)
-killerList.Size = UDim2.new(1, -8, 0, 132)
-killerList.BackgroundColor3 = BG_CARD
-killerList.BorderSizePixel = 0
-killerList.ScrollBarThickness = 3
-killerList.ScrollBarImageColor3 = ACCENT
-killerList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-killerList.CanvasSize = UDim2.new(0, 0, 0, 0)
-Instance.new("UICorner", killerList).CornerRadius = UDim.new(0, 7)
-local killerLayout = Instance.new("UIListLayout", killerList)
-killerLayout.Padding = UDim.new(0, 3)
-local killerPadding = Instance.new("UIPadding", killerList)
-killerPadding.PaddingTop = UDim.new(0, 4)
-killerPadding.PaddingLeft = UDim.new(0, 4)
-killerPadding.PaddingRight = UDim.new(0, 4)
-
-local function refreshKillerTargets()
-    for _, child in ipairs(killerList:GetChildren()) do
-        if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
-    end
-    local candidates = {}
-    local myRoot = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
-    for _, candidate in ipairs(P:GetPlayers()) do
-        if candidate ~= pl then
-            local root = getMapTargetRoot(candidate)
-            if root then
-                table.insert(candidates, {
-                    player = candidate,
-                    distance = myRoot and (root.Position - myRoot.Position).Magnitude or math.huge
-                })
-            end
-        end
-    end
-    table.sort(candidates, function(a, b) return a.distance < b.distance end)
-    for index, entry in ipairs(candidates) do
-        local candidate = entry.player
-        local row = Instance.new("TextButton")
-        row.Size = UDim2.new(1, -4, 0, 30)
-        row.LayoutOrder = index
-        row.BackgroundColor3 = candidate == killerTarget and BG_SEC or BG_MAIN
-        row.BorderSizePixel = 0
-        row.Text = string.format("  %s  •  %.0f studs", candidate.DisplayName, entry.distance)
-        row.TextColor3 = candidate == killerTarget and GREEN or TXT
-        row.TextXAlignment = Enum.TextXAlignment.Left
-        row.Font = Enum.Font.GothamMedium
-        row.TextSize = 10
-        row.Parent = killerList
-        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
-        row.MouseButton1Click:Connect(function()
-            killerTarget = candidate
-            selectedFlyTarget = candidate
-            killerTargetLabel.Text = "ĐÃ CHỌN: " .. candidate.DisplayName
-            killerTargetLabel.TextColor3 = GREEN
-            refreshKillerTargets()
-        end)
-    end
-    if #candidates == 0 then
-        local empty = Instance.new("TextLabel")
-        empty.Size = UDim2.new(1, -4, 0, 28)
-        empty.BackgroundTransparency = 1
-        empty.Text = "Không có mục tiêu hợp lệ"
-        empty.TextColor3 = TXT_DIM
-        empty.Font = Enum.Font.Gotham
-        empty.TextSize = 10
-        empty.Parent = killerList
-    end
-end
-
-mkBtn(killerPage, "LÀM MỚI DANH SÁCH MỤC TIÊU", refreshKillerTargets)
-
-local function killerFindWeapon()
-    local character = pl.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local backpack = pl:FindFirstChildOfClass("Backpack")
-    if not humanoid then return nil end
-    if backpack then
-        for _, item in ipairs(backpack:GetChildren()) do
-            if item:IsA("Tool") then
-                humanoid:EquipTool(item)
-                return item
-            end
-        end
-    end
-    for _, item in ipairs(character:GetChildren()) do
-        if item:IsA("Tool") then return item end
-    end
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if root then
-        local nearestTool, nearestDistance
-        for _, item in ipairs(workspace:GetDescendants()) do
-            if item:IsA("Tool") and item.Parent == workspace then
-                local handle = item:FindFirstChild("Handle")
-                if handle and handle:IsA("BasePart") then
-                    local distance = (handle.Position - root.Position).Magnitude
-                    if distance <= 200 and (not nearestDistance or distance < nearestDistance) then
-                        nearestTool, nearestDistance = item, distance
-                    end
-                end
-            end
-        end
-        if nearestTool then
-            local handle = nearestTool:FindFirstChild("Handle")
-            if handle then root.CFrame = handle.CFrame + Vector3.new(0, 2, 0) end
-            task.wait(0.15)
-            pcall(function() humanoid:EquipTool(nearestTool) end)
-            return nearestTool
-        end
-    end
-    return nil
-end
-
-local function killerSetActive(enabled)
-    killerActive = enabled
-    if enabled then
-        if not killerTarget or not getMapTargetRoot(killerTarget) then
-            killerActive = false
-            return false
-        end
-        local character = pl.Character
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        if not humanoid then killerActive = false return false end
-        killerOldCameraMode = pl.CameraMode
-        killerOldMinZoom, killerOldMaxZoom = pl.CameraMinZoomDistance, pl.CameraMaxZoomDistance
-        pl.CameraMode = Enum.CameraMode.LockFirstPerson
-        pl.CameraMinZoomDistance, pl.CameraMaxZoomDistance = 0.5, 0.5
-        tg.noclip = true
-        tg.autoFly = false
-        killerWeaponReady = false
-        killerEquipping = false
-        killerMultiTargetBusy = false
-        killerFindWeapon()
-        killerRefreshToolCache()
-        killerLastToolRefresh = os.clock()
-        killerLastToolSwitch = 0
-        killerToolIdx = 0
-    else
-        pl.CameraMode = killerOldCameraMode or Enum.CameraMode.Classic
-        pl.CameraMinZoomDistance = killerOldMinZoom or 0.5
-        pl.CameraMaxZoomDistance = killerOldMaxZoom or 128
-        tg.noclip = false
-        killerMultiTargetBusy = false
-    end
-    return true
-end
-
-mkBtn(killerPage, "SET VỊ TRÍ LẤY VŨ KHÍ", function(btn)
-    local char = pl.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if root then
-        killerWeaponLocation = root.CFrame
-        btn.Text = "   ✔ ĐÃ LƯU VỊ TRÍ VŨ KHÍ"
-    end
-end)
-
-mkTog(killerPage, "KILLER  •  BẬT / TẮT", false, function(enabled)
-    if not killerSetActive(enabled) then
-        killerTargetLabel.Text = "HÃY CHỌN MỤC TIÊU CÒN SỐNG"
-        killerTargetLabel.TextColor3 = RED
-    end
-end)
-
-mkTog(killerPage, "Chặn prompt mua hàng", false, function(enabled)
-    killerPromptProtection = enabled
-    if not enabled then
-        for prompt, wasEnabled in pairs(protectedPrompts) do
-            if prompt and prompt.Parent then prompt.Enabled = wasEnabled end
-        end
-        table.clear(protectedPrompts)
-    end
-end)
-
-local purchaseWords = {"buy", "purchase", "shop", "mua", "robux", "product"}
-local ProximityPromptService = game:GetService("ProximityPromptService")
-ProximityPromptService.PromptShown:Connect(function(prompt)
-    if not killerPromptProtection or not prompt or not prompt.Parent then return end
-    local promptText = string.lower((prompt.ActionText or "") .. " " .. (prompt.ObjectText or ""))
-    for _, word in ipairs(purchaseWords) do
-        if string.find(promptText, word, 1, true) then
-            if protectedPrompts[prompt] == nil then
-                protectedPrompts[prompt] = prompt.Enabled
-            end
-            prompt.Enabled = false
-            break
-        end
-    end
-end)
-
-RS.Heartbeat:Connect(function()
-    if not killerActive then return end
-    local character = pl.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local myRoot = character and character:FindFirstChild("HumanoidRootPart")
-
-    if not character or not humanoid or humanoid.Health <= 0 or not myRoot then
-        killerWeaponReady = false
-        return
-    end
-
-    if not killerWeaponReady then
-        if not killerEquipping then
-            killerEquipping = true
-            task.spawn(function()
-                if killerWeaponLocation and myRoot.Parent then
-                    pcall(function() myRoot.CFrame = killerWeaponLocation end)
-                    task.wait(0.15)
-                end
-                local tool = killerFindWeapon()
-                if tool then killerWeaponReady = true end
-                killerRefreshToolCache()
-                killerLastToolRefresh = os.clock()
-                killerEquipping = false
-            end)
-        end
-        return
-    end
-
-    local validTargets = {}
-    for _, p in ipairs(P:GetPlayers()) do
-        if p ~= pl then
-            local r = getMapTargetRoot(p)
-            local tChar = p.Character
-            local tHead = tChar and tChar:FindFirstChild("Head")
-            if r and tHead then
-                table.insert(validTargets, {
-                    player = p, root = r, head = tHead,
-                    distance = (r.Position - myRoot.Position).Magnitude
-                })
-            end
-        end
-    end
-    if #validTargets == 0 then return end
-    table.sort(validTargets, function(a, b) return a.distance < b.distance end)
-
-    local currentValid = false
-    for _, t in ipairs(validTargets) do
-        if t.player == killerTarget then currentValid = true break end
-    end
-    if not currentValid then
-        killerTarget = validTargets[1].player
-        killerTargetLabel.Text = "ĐÃ CHỌN: " .. killerTarget.DisplayName
-        killerTargetLabel.TextColor3 = GREEN
-    end
-
-    local mainTarget
-    for _, t in ipairs(validTargets) do
-        if t.player == killerTarget then mainTarget = t break end
-    end
-    mainTarget = mainTarget or validTargets[1]
-
-    killerSpinAngle = killerSpinAngle + math.rad(360) * (1/60)
-    local radius = 5
-    local offset = Vector3.new(math.sin(killerSpinAngle) * radius, 4, math.cos(killerSpinAngle) * radius)
-    myRoot.CFrame = CFrame.new(mainTarget.root.Position + offset, mainTarget.root.Position + Vector3.new(0, 4, 0))
-    myRoot.AssemblyLinearVelocity = Vector3.zero
-    myRoot.AssemblyAngularVelocity = Vector3.zero
-
-    cam = workspace.CurrentCamera or cam
-    if cam and mainTarget.head then
-        cam.CameraSubject = humanoid
-        cam.CFrame = CFrame.new(cam.CFrame.Position, mainTarget.head.Position)
-    end
-
-    local tool = killerEquipNextTool()
-    if tool and tool.Parent == character then
-        if os.clock() - killerLastAttack >= killerAttackDelay then
-            killerLastAttack = os.clock()
-            pcall(function() tool:Activate() end)
-        end
-
-        if not killerMultiTargetBusy and os.clock() - killerLastSecondary >= killerSecondaryDelay then
-            killerLastSecondary = os.clock()
-            local secondary
-            for _, t in ipairs(validTargets) do
-                if t.player ~= killerTarget and t.distance <= killerExtendedRange then
-                    secondary = t
-                    break
-                end
-            end
-            if secondary then
-                killerMultiTargetBusy = true
-                task.spawn(function()
-                    local savedCF = myRoot.CFrame
-                    pcall(function()
-                        myRoot.CFrame = CFrame.new(secondary.root.Position + Vector3.new(0, 3, 0),
-                                                    secondary.head.Position)
-                    end)
-                    pcall(function() tool:Activate() end)
-                    task.wait(0.03)
-                    pcall(function() tool:Activate() end)
-                    pcall(function() myRoot.CFrame = savedCF end)
-                    killerMultiTargetBusy = false
-                end)
-            end
-        end
-    end
-end)
-
-refreshKillerTargets()
 
 -- INFO PAGE
 local infoPage = pages["INFO"]
